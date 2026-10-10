@@ -1,0 +1,19 @@
+{
+  "name": "board-table",
+  "private": true,
+  "description": "Private, invite-only site for playing board games online with friends.",
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "^3.9.10"
+  }
+}
