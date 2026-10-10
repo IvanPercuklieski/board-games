@@ -1,4 +1,4 @@
-import type { Routes } from '@angular/router';
+import type { ActivatedRouteSnapshot, Routes } from '@angular/router';
 import { hostOnly, signedOutOnly } from './core/guards';
 
 /** Every page is lazy-loaded so the start bundle stays small. */
@@ -29,6 +29,13 @@ export const routes: Routes = [
     title: 'My rooms · board·table',
     canActivate: [hostOnly],
     loadComponent: () => import('./features/my-rooms/my-rooms.page').then((m) => m.MyRoomsPage),
+  },
+  {
+    // Guests: no login. The invite token travels in the URL fragment (#t=...).
+    path: 'join/:roomId',
+    title: 'Join a table · board·table',
+    resolve: { fragment: (route: ActivatedRouteSnapshot) => route.fragment },
+    loadComponent: () => import('./features/join/join.page').then((m) => m.JoinPage),
   },
   {
     path: '**',

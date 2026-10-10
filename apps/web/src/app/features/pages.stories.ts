@@ -5,6 +5,7 @@ import { applicationConfig } from '@storybook/angular-vite';
 import { ApiClient } from '../core/api-client';
 import { CatalogPage } from './catalog/catalog.page';
 import { GameDetailPage } from './game-detail/game-detail.page';
+import { JoinPage } from './join/join.page';
 import { MyRoomsPage } from './my-rooms/my-rooms.page';
 
 /** Host pages with a mocked API (no login needed in Storybook). */
@@ -37,6 +38,14 @@ const mockApi: Partial<ApiClient> = {
   createRoom: async () => {
     throw new Error('Storybook: hosting is disabled');
   },
+  preview: async () => ({
+    gameId: 'tictactoe',
+    gameName: 'Tic-tac-toe',
+    hostName: 'Ivan',
+    status: 'waiting',
+    maxSeats: 2,
+    freeSeats: 1,
+  }),
 };
 
 const meta: Meta = {
@@ -65,4 +74,12 @@ export const MyRooms: StoryObj<MyRoomsPage> = {
   name: 'My rooms',
   render: () => ({ template: `<bt-my-rooms-page />` }),
   decorators: [(story) => ({ ...story(), moduleMetadata: { imports: [MyRoomsPage] } })],
+};
+
+export const Join: StoryObj<JoinPage> = {
+  name: 'Join (guest)',
+  render: () => ({
+    template: `<bt-join-page roomId="AbCdEfGhIjKlMnOpQrSt_-" fragment="t=TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" />`,
+  }),
+  decorators: [(story) => ({ ...story(), moduleMetadata: { imports: [JoinPage] } })],
 };
