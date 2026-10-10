@@ -48,9 +48,14 @@ export class GameSession<G> {
   readonly isConnected = computed(() => this.state()?.isConnected ?? false);
   readonly currentPlayer = computed(() => this.ctx()?.currentPlayer);
   readonly gameover = computed(() => this.ctx()?.gameover as unknown);
+  /**
+   * Only while connected: the client starts from a local copy of the start state, and a move
+   * made before (re)connecting would reach the server ahead of the sync that proves this
+   * seat, be dropped there, and leave this browser showing a move nobody else saw.
+   */
   readonly isMyTurn = computed(() => {
     const state = this.state();
-    return !!state && state.ctx.gameover === undefined && state.isActive;
+    return !!state && state.isConnected && state.ctx.gameover === undefined && state.isActive;
   });
 
   readonly players = computed<SessionPlayer[]>(() => {
@@ -96,7 +101,7 @@ export class GameSession<G> {
 
   /** Makes a move if it exists; the game rules (client and server) decide if it is legal. */
   move(name: string, ...args: unknown[]) {
-    if (this.stopped) return;
+    if (this.stopped || !this.isConnected()) return;
     this.client.moves[name]?.(...args);
   }
 

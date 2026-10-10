@@ -1,6 +1,6 @@
 import { TicTacToe, type TicTacToeState } from '@board-table/games';
 import { Local } from 'boardgame.io/multiplayer';
-import { GameSession } from './game-session';
+import { GameSession, type GameSessionOptions } from './game-session';
 
 let tables = 0;
 
@@ -8,8 +8,7 @@ let tables = 0;
  * Two players at one in-memory table (boardgame.io Local master), no server needed.
  * boardgame.io caches Local masters per game, so each table gets its own match id.
  */
-function table() {
-  const multiplayer = Local();
+function table(multiplayer: GameSessionOptions<TicTacToeState>['multiplayer'] = Local()) {
   const matchID = `m${tables++}`;
   const names = ['Ivan', 'Mara'];
   const sessions = ['0', '1'].map(
@@ -39,6 +38,28 @@ describe('GameSession', () => {
     expect(ivan.isMyTurn()).toBe(true);
     expect(mara.isMyTurn()).toBe(false);
     expect(ivan.currentPlayer()).toBe('0');
+  });
+
+  it('allows no moves while the connection is down', async () => {
+    // A move made offline would reach the server ahead of the re-sync that proves the seat,
+    // be dropped there, and leave this browser showing a move nobody else saw.
+    let ivanTransport: { setConnectionStatus(connected: boolean): void } | undefined;
+    const local = Local();
+    const [ivan, mara] = table((opts) => {
+      const transport = local(opts);
+      // boardgame.io's Transport keeps setConnectionStatus protected; the test drives it
+      if (opts.playerID === '0') ivanTransport = transport as unknown as typeof ivanTransport;
+      return transport;
+    });
+    open.push(ivan, mara);
+    await vi.waitFor(() => expect(ivan.isMyTurn()).toBe(true));
+
+    ivanTransport!.setConnectionStatus(false);
+    expect(ivan.isConnected()).toBe(false);
+    expect(ivan.isMyTurn()).toBe(false);
+    ivan.move('clickCell', 4);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mara.G()!.cells[4]).toBeNull();
   });
 
   it('sends moves and every seat sees the result', async () => {
