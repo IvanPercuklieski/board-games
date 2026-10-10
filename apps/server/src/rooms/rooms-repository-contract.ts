@@ -246,6 +246,119 @@ export function describeRoomsRepositoryContract(
       });
     });
 
+    describe('signed-in players', () => {
+      const member = (name: string, userId: string) => ({
+        name,
+        userId,
+        credentialsHash: `hash-${name}-${Math.random()}`,
+      });
+
+      it('seats a signed-in player with their account', async () => {
+        const room = await createRoom(alice, 3);
+        expect(await repo.takeFreeSeat(room.id, member('Bob', bob))).toBe(1);
+        expect((await repo.listSeats(room.id))[1]).toMatchObject({ name: 'Bob', userId: bob });
+      });
+
+      it('never gives one account two seats in a room', async () => {
+        const room = await createRoom(alice, 3);
+        await repo.takeFreeSeat(room.id, member('Bob', bob));
+        expect(await repo.takeFreeSeat(room.id, member('Bob again', bob))).toBe('already_seated');
+        expect(await repo.takeFreeSeat(room.id, member('Alice', alice))).toBe('already_seated');
+        expect(await repo.listSeats(room.id)).toHaveLength(2);
+      });
+
+      it("reissues an account's seat credentials (also in a running match)", async () => {
+        const room = await createRoom(alice);
+        const first = member('Bob', bob);
+        await repo.takeFreeSeat(room.id, first);
+        await repo.startRoom(room.id, (seats) => buildMatch('tictactoe', seats));
+        expect(await repo.replaceAccountSeatCredentials(room.id, bob, 'bob-new')).toEqual({
+          seatIndex: 1,
+          previousCredentialsHash: first.credentialsHash,
+        });
+        expect(await repo.findSeatByCredentialsHash(room.id, first.credentialsHash)).toBeUndefined();
+        expect(await repo.findSeatByCredentialsHash(room.id, 'bob-new')).toMatchObject({
+          seatIndex: 1,
+        });
+        const { metadata } = await storage.fetch(room.id, { metadata: true });
+        expect(metadata.players[1]).toMatchObject({ credentials: 'bob-new' });
+      });
+
+      it('reissuing returns undefined when the account has no seat there', async () => {
+        const room = await createRoom(alice);
+        expect(await repo.replaceAccountSeatCredentials(room.id, bob, 'x')).toBeUndefined();
+        expect(await repo.replaceAccountSeatCredentials(newRoomId(), alice, 'x')).toBeUndefined();
+      });
+
+      it('keeps the account on its seat when seats are renumbered', async () => {
+        const room = await createRoom(alice, 3);
+        await repo.takeFreeSeat(room.id, guest('Gus'));
+        await repo.takeFreeSeat(room.id, member('Bob', bob));
+        await repo.freeSeat(room.id, 1);
+        await repo.startRoom(room.id, (seats) => buildMatch('tictactoe', seats));
+        expect((await repo.listSeats(room.id))[1]).toMatchObject({ seatIndex: 1, userId: bob });
+      });
+    });
+
+    describe('handing the room to another host', () => {
+      const member = (name: string, userId: string) => ({
+        name,
+        userId,
+        credentialsHash: `hash-${name}-${Math.random()}`,
+      });
+
+      it('makes the first seated candidate the host; seats stay as they are', async () => {
+        const dora = await fixture.createHost('Dora');
+        const room = await createRoom(alice, 3);
+        await repo.takeFreeSeat(room.id, member('Bob', bob));
+        await repo.takeFreeSeat(room.id, member('Dora', dora));
+        expect(await repo.handOverHost(room.id, alice, [bob, dora], 100)).toEqual({
+          outcome: 'handed_over',
+          hostUserId: bob,
+        });
+        expect((await repo.findRoom(room.id))!.hostUserId).toBe(bob);
+        expect(await repo.listSeats(room.id)).toHaveLength(3);
+      });
+
+      it('skips candidates who are not seated or already host too many rooms', async () => {
+        const erin = await fixture.createHost('Erin');
+        const frank = await fixture.createHost('Frank');
+        await repo.createRoom(newRoom(erin), hostSeat(erin), 100); // Erin hosts one room already
+        const room = await createRoom(alice, 3);
+        await repo.takeFreeSeat(room.id, member('Erin', erin));
+        await repo.takeFreeSeat(room.id, member('Frank', frank));
+        expect(await repo.handOverHost(room.id, alice, [bob, erin, frank], 1)).toEqual({
+          outcome: 'handed_over',
+          hostUserId: frank,
+        });
+      });
+
+      it('deletes the room (and its match) when no candidate can take it', async () => {
+        const room = await createRoom(alice);
+        await repo.takeFreeSeat(room.id, guest('Gus'));
+        await repo.startRoom(room.id, (seats) => buildMatch('tictactoe', seats));
+        expect(await repo.handOverHost(room.id, alice, [], 100)).toEqual({ outcome: 'deleted' });
+        expect(await repo.findRoom(room.id)).toBeUndefined();
+        expect((await storage.fetch(room.id, { state: true })).state).toBeUndefined();
+      });
+
+      it('changes nothing when the host already changed or the room is gone', async () => {
+        const room = await createRoom(alice);
+        await repo.takeFreeSeat(room.id, member('Bob', bob));
+        expect(await repo.handOverHost(room.id, bob, [], 100)).toEqual({ outcome: 'unchanged' });
+        expect(await repo.findRoom(room.id)).toBeDefined();
+        expect(await repo.handOverHost(newRoomId(), alice, [bob], 100)).toEqual({
+          outcome: 'unchanged',
+        });
+      });
+
+      it('counts a handover as activity', async () => {
+        const room = await createRoom(alice);
+        await repo.takeFreeSeat(room.id, member('Bob', bob));
+        await expectActivity(room.id, () => repo.handOverHost(room.id, alice, [bob], 100));
+      });
+    });
+
     it('deletes a room with its seats and match', async () => {
       const room = await createRoom(alice);
       await repo.takeFreeSeat(room.id, guest('Bob'));

@@ -16,7 +16,7 @@ export interface RoomRecord {
 export interface SeatRecord {
   seatIndex: number;
   name: string;
-  /** Set for the host's seat. */
+  /** The seated player's account (host, or a signed-in player); null for guests. */
   userId: string | null;
   credentialsHash: string;
 }
@@ -34,6 +34,13 @@ export interface NewSeat {
   userId?: string | null;
   credentialsHash: string;
 }
+
+export type HandOverResult =
+  | { outcome: 'handed_over'; hostUserId: string }
+  /** No candidate could take the room, so it was deleted with its seats and match. */
+  | { outcome: 'deleted' }
+  /** The room is gone or no longer hosted by `fromUserId` (someone else handled it). */
+  | { outcome: 'unchanged' };
 
 export interface StaleCutoffs {
   waitingBefore: Date;
@@ -69,8 +76,29 @@ export interface RoomsRepository {
    * Puts the player into the lowest free seat below `maxSeats` and returns its index, or
    * `undefined` if none is free. Concurrent calls never get the same seat. In a started room
    * the boardgame.io match's player for that seat is updated in the same transaction.
+   * An account holds at most one seat per room: `already_seated` if `seat.userId` has one.
    */
-  takeFreeSeat(roomId: string, seat: NewSeat): Promise<number | undefined>;
+  takeFreeSeat(roomId: string, seat: NewSeat): Promise<number | 'already_seated' | undefined>;
+  /**
+   * Gives the account's seat in this room new credentials (also in a started match).
+   * Undefined if the account has no seat there.
+   */
+  replaceAccountSeatCredentials(
+    roomId: string,
+    userId: string,
+    credentialsHash: string,
+  ): Promise<{ seatIndex: number; previousCredentialsHash: string } | undefined>;
+  /**
+   * Makes the first of `candidates` (account ids, in priority order) that is seated in the room
+   * and hosts fewer than `maxRoomsPerHost` rooms the host. Without one, the room is deleted.
+   * Only while `fromUserId` still hosts the room; otherwise nothing changes.
+   */
+  handOverHost(
+    roomId: string,
+    fromUserId: string,
+    candidates: string[],
+    maxRoomsPerHost: number,
+  ): Promise<HandOverResult>;
   /** Frees a seat (and clears it in the match if started). False if there was no such seat. */
   freeSeat(roomId: string, seatIndex: number): Promise<boolean>;
   setInviteTokenHash(roomId: string, hash: string): Promise<void>;

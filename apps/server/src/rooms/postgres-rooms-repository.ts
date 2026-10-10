@@ -2,6 +2,7 @@ import type { RoomStatus } from '@board-table/shared';
 import type { Sql, Tx } from '../db';
 import { insertMatchInDb, setPlayerSeatInDb } from '../storage/postgres-storage';
 import type {
+  HandOverResult,
   MatchBuilder,
   NewRoom,
   NewSeat,
@@ -99,7 +100,9 @@ export class PostgresRoomsRepository implements RoomsRepository {
     return this.sql.begin(async (tx) => {
       const room = await lockRoom(tx, roomId);
       if (!room) return undefined;
-      const taken = new Set((await selectSeats(tx, roomId)).map((s) => s.seat_index));
+      const seats = await selectSeats(tx, roomId);
+      if (seat.userId && seats.some((s) => s.user_id === seat.userId)) return 'already_seated';
+      const taken = new Set(seats.map((s) => s.seat_index));
       const free = Array.from({ length: room.max_seats }, (_, i) => i).find((i) => !taken.has(i));
       if (free === undefined) return undefined;
       await insertSeat(tx, roomId, free, seat);
@@ -141,6 +144,48 @@ export class PostgresRoomsRepository implements RoomsRepository {
         await setPlayerSeatInDb(tx, roomId, seatIndex, { name: seat.name, credentialsHash });
       }
       return true;
+    });
+  }
+
+  replaceAccountSeatCredentials(roomId: string, userId: string, credentialsHash: string) {
+    return this.sql.begin(async (tx) => {
+      const room = await lockRoom(tx, roomId);
+      if (!room) return undefined;
+      const [seat] = await tx<SeatRow[]>`
+        select seat_index, name, user_id, credentials_hash from public.room_seats
+        where room_id = ${roomId} and user_id = ${userId}`;
+      if (!seat) return undefined;
+      await tx`
+        update public.room_seats set credentials_hash = ${credentialsHash}
+        where room_id = ${roomId} and seat_index = ${seat.seat_index}`;
+      if (room.status === 'playing') {
+        await setPlayerSeatInDb(tx, roomId, seat.seat_index, { name: seat.name, credentialsHash });
+      }
+      return { seatIndex: seat.seat_index, previousCredentialsHash: seat.credentials_hash };
+    });
+  }
+
+  handOverHost(roomId: string, fromUserId: string, candidates: string[], maxRoomsPerHost: number) {
+    return this.sql.begin(async (tx): Promise<HandOverResult> => {
+      const [room] = await tx<{ host_user_id: string }[]>`
+        select host_user_id from public.rooms where id = ${roomId} for update`;
+      if (room?.host_user_id !== fromUserId) return { outcome: 'unchanged' };
+      const seated = new Set((await selectSeats(tx, roomId)).map((s) => s.user_id));
+      for (const candidate of candidates) {
+        if (!seated.has(candidate)) continue;
+        // Same lock as createRoom, so the per-host room limit holds under concurrency.
+        await tx`select id from public.profiles where id = ${candidate} for update`;
+        const [hosted] = await tx<{ n: number }[]>`
+          select count(*)::int as n from public.rooms where host_user_id = ${candidate}`;
+        if ((hosted?.n ?? 0) >= maxRoomsPerHost) continue;
+        await tx`
+          update public.rooms set host_user_id = ${candidate}, last_activity_at = now()
+          where id = ${roomId}`;
+        return { outcome: 'handed_over', hostUserId: candidate };
+      }
+      await tx`delete from bgio.matches where match_id = ${roomId}`;
+      await tx`delete from public.rooms where id = ${roomId}`; // seats cascade
+      return { outcome: 'deleted' };
     });
   }
 

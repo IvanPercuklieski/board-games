@@ -14,6 +14,7 @@ import { hashSecret, newRoomId, newSecret } from '../secrets';
 import { MemoryRoomsRepository } from '../testing/memory-rooms-repository';
 import { MemoryStorage } from '../testing/memory-storage';
 import { ApiFailure, RoomsService } from './rooms-service';
+import { SeatEvents } from './seat-events';
 
 const ORIGIN = 'https://board-table.example';
 
@@ -22,15 +23,38 @@ let repo: MemoryRoomsRepository;
 let service: RoomsService;
 let alice: string;
 let bob: string;
+let carol: string;
+/** Seat keys (credentials hashes) the fake presence reports as away. */
+let away: Set<string>;
+let events: SeatEvents;
+let changed: string[];
+let closed: string[];
+let revoked: string[];
 
 beforeEach(() => {
   storage = new MemoryStorage();
   repo = new MemoryRoomsRepository(storage);
-  service = new RoomsService({ repo, publicOrigin: ORIGIN, findGame });
+  away = new Set();
+  events = new SeatEvents();
+  changed = [];
+  closed = [];
+  revoked = [];
+  events.onRoomChanged((id) => changed.push(id));
+  events.onRoomClosed((id) => closed.push(id));
+  events.onRevoked((id, playerID) => revoked.push(`${id}:${playerID}`));
+  service = new RoomsService({
+    repo,
+    publicOrigin: ORIGIN,
+    findGame,
+    seatEvents: events,
+    presence: { isAway: (_roomId, seatKey) => away.has(seatKey) },
+  });
   alice = randomUUID();
   bob = randomUUID();
   repo.addProfile(alice, 'Alice');
   repo.addProfile(bob, 'Bob');
+  carol = randomUUID();
+  repo.addProfile(carol, 'Carol');
 });
 
 /** The registry plus two made-up games with other player ranges (only rules are fake). */
@@ -46,8 +70,8 @@ async function failsWith(promise: Promise<unknown>, code: ApiErrorCode) {
 }
 
 /** Creates a room for Alice and returns its id plus the invite token from the link. */
-async function aliceRoom(maxSeats = 2) {
-  const created = await service.createRoom(alice, { gameId: 'tictactoe', maxSeats });
+async function aliceRoom(maxSeats = 2, gameId = 'tictactoe') {
+  const created = await service.createRoom(alice, { gameId, maxSeats });
   const token = new URL(created.inviteUrl).hash.replace('#t=', '');
   return { ...created, token };
 }
@@ -369,5 +393,183 @@ describe('lobby', () => {
     const other = await aliceRoom(2);
     await failsWith(service.lobby(room.roomId, newSecret()), 'not_found');
     await failsWith(service.lobby(other.roomId, room.seat.credentials), 'not_found');
+  });
+});
+
+describe('signed-in players joining through the link', () => {
+  it('seats them with their account', async () => {
+    const room = await aliceRoom(3, 'party');
+    const seat = await service.join(room.roomId, { token: room.token, name: 'Bobby' }, bob);
+    expect((await repo.listSeats(room.roomId))[1]).toMatchObject({ name: 'Bobby', userId: bob });
+    expect((await service.lobby(room.roomId, seat.credentials)).you.isHost).toBe(false);
+  });
+
+  it('reissues their seat when they join again (old device stops working)', async () => {
+    const room = await aliceRoom(2);
+    const first = await service.join(room.roomId, { token: room.token, name: 'Bob' }, bob);
+    revoked = [];
+    const again = await service.join(room.roomId, { token: room.token, name: 'Bob' }, bob);
+    expect(again.seatIndex).toBe(1);
+    await failsWith(service.lobby(room.roomId, first.credentials), 'not_found');
+    expect((await service.lobby(room.roomId, again.credentials)).you.seatIndex).toBe(1);
+    expect(revoked).toEqual([`${room.roomId}:1`]);
+    expect(await repo.listSeats(room.roomId)).toHaveLength(2);
+  });
+
+  it('the host joining their own link just gets their seat again', async () => {
+    const room = await aliceRoom(2);
+    const again = await service.join(room.roomId, { token: room.token, name: 'Alice' }, alice);
+    expect(again.seatIndex).toBe(0);
+    await failsWith(service.lobby(room.roomId, room.seat.credentials), 'not_found');
+  });
+});
+
+describe('room events', () => {
+  it('announces every change to the room', async () => {
+    const room = await aliceRoom(3, 'party');
+    await service.join(room.roomId, { token: room.token, name: 'Bob' });
+    await service.changeGame(alice, room.roomId, { gameId: 'tictactoe', maxSeats: 2 });
+    await service.freeSeat(alice, room.roomId, 1);
+    await service.reclaimHostSeat(alice, room.roomId);
+    await service.join(room.roomId, { token: room.token, name: 'Bob' });
+    await service.start(alice, room.roomId);
+    expect(changed).toEqual(Array(6).fill(room.roomId));
+    await service.closeRoom(alice, room.roomId);
+    expect(closed).toEqual([room.roomId]);
+  });
+});
+
+describe('presence', () => {
+  it('marks away seats in the lobby', async () => {
+    const room = await aliceRoom(2);
+    const bobSeat = await service.join(room.roomId, { token: room.token, name: 'Bob' });
+    away.add(hashSecret(bobSeat.credentials));
+    const lobby = await service.lobby(room.roomId, room.seat.credentials);
+    expect(lobby.seats.map((s) => s.away)).toEqual([false, true]);
+  });
+
+  it('refuses to start while anyone is away', async () => {
+    const room = await aliceRoom(2);
+    const bobSeat = await service.join(room.roomId, { token: room.token, name: 'Bob' });
+    away.add(hashSecret(bobSeat.credentials));
+    await failsWith(service.start(alice, room.roomId), 'players_away');
+    away.clear();
+    await service.start(alice, room.roomId);
+  });
+
+  it('frees an expired guest seat in a waiting room', async () => {
+    const room = await aliceRoom(2);
+    const bobSeat = await service.join(room.roomId, { token: room.token, name: 'Bob' });
+    changed = [];
+    await service.seatExpired(room.roomId, hashSecret(bobSeat.credentials));
+    expect(await repo.listSeats(room.roomId)).toHaveLength(1);
+    expect(revoked).toEqual([`${room.roomId}:1`]);
+    expect(changed).toEqual([room.roomId]);
+  });
+
+  it('keeps expired seats while a game is running, and never frees the host this way', async () => {
+    const room = await aliceRoom(2);
+    const bobSeat = await service.join(room.roomId, { token: room.token, name: 'Bob' });
+    await service.seatExpired(room.roomId, hashSecret(room.seat.credentials));
+    await service.start(alice, room.roomId);
+    await service.seatExpired(room.roomId, hashSecret(bobSeat.credentials));
+    expect(await repo.listSeats(room.roomId)).toHaveLength(2);
+  });
+
+  it('ignores expiry of seats or rooms that are gone', async () => {
+    const room = await aliceRoom(2);
+    await service.seatExpired(room.roomId, 'unknown');
+    await service.seatExpired(newRoomId(), 'unknown');
+    expect(await repo.listSeats(room.roomId)).toHaveLength(1);
+  });
+
+  it('hands a waiting room to the first present account holder when the host is away', async () => {
+    const room = await aliceRoom(4, 'party');
+    await service.join(room.roomId, { token: room.token, name: 'Gus' }); // guest, no account
+    const bobSeat = await service.join(room.roomId, { token: room.token, name: 'Bob' }, bob);
+    await service.join(room.roomId, { token: room.token, name: 'Carol' }, carol);
+    away.add(hashSecret(room.seat.credentials));
+    away.add(hashSecret(bobSeat.credentials)); // Bob is away too, so Carol takes over
+    changed = [];
+    await service.seatAway(room.roomId, hashSecret(room.seat.credentials));
+    expect((await repo.findRoom(room.roomId))!.hostUserId).toBe(carol);
+    expect(await repo.listSeats(room.roomId)).toHaveLength(4); // Alice stays seated
+    expect(changed).toEqual([room.roomId]);
+    const lobby = await service.lobby(room.roomId, room.seat.credentials);
+    expect(lobby.you.isHost).toBe(false);
+    expect(lobby.seats.find((s) => s.isHost)?.name).toBe('Carol');
+  });
+
+  it('deletes the room when the host is away and no one with an account can take it', async () => {
+    const room = await aliceRoom(2);
+    await service.join(room.roomId, { token: room.token, name: 'Gus' });
+    away.add(hashSecret(room.seat.credentials));
+    await service.seatAway(room.roomId, hashSecret(room.seat.credentials));
+    expect(await repo.findRoom(room.roomId)).toBeUndefined();
+    expect(closed).toEqual([room.roomId]);
+  });
+
+  it('an away guest only changes what others see', async () => {
+    const room = await aliceRoom(2);
+    const gus = await service.join(room.roomId, { token: room.token, name: 'Gus' });
+    changed = [];
+    await service.seatAway(room.roomId, hashSecret(gus.credentials));
+    expect((await repo.findRoom(room.roomId))!.hostUserId).toBe(alice);
+    expect(changed).toEqual([room.roomId]);
+  });
+
+  it('keeps the host while a game is running', async () => {
+    const room = await aliceRoom(2);
+    await service.join(room.roomId, { token: room.token, name: 'Bob' }, bob);
+    await service.start(alice, room.roomId);
+    await service.seatAway(room.roomId, hashSecret(room.seat.credentials));
+    expect((await repo.findRoom(room.roomId))!.hostUserId).toBe(alice);
+  });
+
+  it('the new host runs the room; the old one no longer can', async () => {
+    const room = await aliceRoom(3, 'party');
+    await service.join(room.roomId, { token: room.token, name: 'Bob' }, bob);
+    away.add(hashSecret(room.seat.credentials));
+    await service.seatAway(room.roomId, hashSecret(room.seat.credentials));
+    await failsWith(service.regenerateInvite(alice, room.roomId), 'not_found');
+    await expect(service.regenerateInvite(bob, room.roomId)).resolves.toBeDefined();
+    await failsWith(service.freeSeat(bob, room.roomId, 1), 'forbidden'); // Bob's own seat
+    await service.freeSeat(bob, room.roomId, 0); // the old host's seat
+    expect((await service.listRooms(bob)).rooms).toHaveLength(1);
+  });
+});
+
+describe('leave', () => {
+  it('a guest frees their own seat', async () => {
+    const room = await aliceRoom(2);
+    const gus = await service.join(room.roomId, { token: room.token, name: 'Gus' });
+    await service.leave(room.roomId, gus.credentials);
+    expect(await repo.listSeats(room.roomId)).toHaveLength(1);
+    expect(revoked).toEqual([`${room.roomId}:1`]);
+    await failsWith(service.lobby(room.roomId, gus.credentials), 'not_found');
+  });
+
+  it('the host hands the room over and leaves', async () => {
+    const room = await aliceRoom(2);
+    await service.join(room.roomId, { token: room.token, name: 'Bob' }, bob);
+    await service.leave(room.roomId, room.seat.credentials);
+    expect((await repo.findRoom(room.roomId))!.hostUserId).toBe(bob);
+    expect((await repo.listSeats(room.roomId)).map((s) => s.name)).toEqual(['Bob']);
+  });
+
+  it('the host leaving with no one to take over closes the room', async () => {
+    const room = await aliceRoom(2);
+    await service.join(room.roomId, { token: room.token, name: 'Gus' });
+    await service.leave(room.roomId, room.seat.credentials);
+    expect(await repo.findRoom(room.roomId)).toBeUndefined();
+    expect(closed).toEqual([room.roomId]);
+  });
+
+  it('answers not_found for unknown credentials or another room', async () => {
+    const room = await aliceRoom(2);
+    const other = await aliceRoom(2);
+    await failsWith(service.leave(room.roomId, newSecret()), 'not_found');
+    await failsWith(service.leave(other.roomId, room.seat.credentials), 'not_found');
+    expect(await repo.listSeats(room.roomId)).toHaveLength(1);
   });
 });

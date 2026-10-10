@@ -27,33 +27,45 @@ export class ApiFailure extends Error {
   }
 }
 
+/** Who is at the table right now (live room connections). Seats are keyed by credentials hash. */
+export interface PresenceView {
+  isAway(roomId: string, seatKey: string): boolean;
+}
+
+const NOBODY_AWAY: PresenceView = { isAway: () => false };
+
 /**
  * Room and invite rules (see CLAUDE.md "API design"). Callers pass an already-authenticated
  * user id (hosts) or the raw secrets from the request (guests); inputs are already
- * schema-validated by the routes.
+ * schema-validated by the routes. Every change is announced through `SeatEvents`, so the room
+ * connections can push a fresh snapshot.
  */
 export class RoomsService {
   private readonly repo: RoomsRepository;
   private readonly publicOrigin: string;
   private readonly seatEvents: SeatEvents;
   private readonly findGame: (gameId: string) => GameDefinition | undefined;
+  private readonly presence: PresenceView;
 
   constructor({
     repo,
     publicOrigin,
     seatEvents = new SeatEvents(),
     findGame = getGameDefinition,
+    presence = NOBODY_AWAY,
   }: {
     repo: RoomsRepository;
     publicOrigin: string;
     seatEvents?: SeatEvents;
     /** The game registry; tests add games with other player ranges. */
     findGame?: (gameId: string) => GameDefinition | undefined;
+    presence?: PresenceView;
   }) {
     this.repo = repo;
     this.publicOrigin = publicOrigin;
     this.seatEvents = seatEvents;
     this.findGame = findGame;
+    this.presence = presence;
   }
 
   // --- hosts ---------------------------------------------------------------------
@@ -100,6 +112,7 @@ export class RoomsService {
     const result = await this.repo.updateRoomGame(roomId, game.id, req.maxSeats);
     if (result === 'not_waiting') throw new ApiFailure('room_locked');
     if (result === 'too_many_players') throw new ApiFailure('too_many_players');
+    this.seatEvents.roomChanged(roomId);
     return this.summary(await this.hostedRoom(userId, roomId));
   }
 
@@ -113,6 +126,10 @@ export class RoomsService {
   async start(userId: string, roomId: string): Promise<void> {
     const room = await this.hostedRoom(userId, roomId);
     if (room.status !== 'waiting') throw new ApiFailure('room_locked');
+    const seats = await this.repo.listSeats(roomId);
+    if (seats.some((seat) => this.presence.isAway(roomId, seat.credentialsHash))) {
+      throw new ApiFailure('players_away');
+    }
     let result;
     try {
       result = await this.repo.startRoom(roomId, (seats) => buildMatch(room.gameId, seats));
@@ -121,33 +138,31 @@ export class RoomsService {
       throw e;
     }
     if (result === 'not_waiting') throw new ApiFailure('room_locked');
+    this.seatEvents.roomChanged(roomId);
   }
 
   async freeSeat(userId: string, roomId: string, seatIndex: number): Promise<void> {
-    await this.hostedRoom(userId, roomId);
-    if (seatIndex === 0) throw new ApiFailure('forbidden'); // the host closes the room instead
-    if (!(await this.repo.freeSeat(roomId, seatIndex))) throw new ApiFailure('not_found');
-    // In a started game seat index = playerID; the removed player stops receiving the game.
-    this.seatEvents.revoked(roomId, String(seatIndex));
+    const room = await this.hostedRoom(userId, roomId);
+    const host = await this.hostSeat(room);
+    if (seatIndex === host?.seatIndex) throw new ApiFailure('forbidden'); // host closes instead
+    if (!(await this.removeSeat(roomId, seatIndex))) throw new ApiFailure('not_found');
   }
 
   /**
    * The host opened the room on another device (seat secrets live only in the browser):
-   * issue fresh credentials for seat 0. The old device's credentials stop working.
+   * issue fresh credentials for the host's seat. The old device's credentials stop working.
    */
   async reclaimHostSeat(userId: string, roomId: string): Promise<SeatCredentials> {
     await this.hostedRoom(userId, roomId);
-    const credentials = newSecret();
-    if (!(await this.repo.replaceSeatCredentials(roomId, 0, hashSecret(credentials)))) {
-      throw new ApiFailure('not_found');
-    }
-    this.seatEvents.revoked(roomId, '0'); // the old device stops receiving the game
-    return { seatIndex: 0, credentials };
+    const reissued = await this.reissueAccountSeat(roomId, userId);
+    if (!reissued) throw new ApiFailure('not_found');
+    return reissued;
   }
 
   async closeRoom(userId: string, roomId: string): Promise<void> {
     await this.hostedRoom(userId, roomId);
     await this.repo.deleteRoom(roomId);
+    this.seatEvents.roomClosed(roomId);
   }
 
   // --- guests ----------------------------------------------------------------------
@@ -158,38 +173,60 @@ export class RoomsService {
     return {
       gameId: room.gameId,
       gameName: this.findGame(room.gameId)?.displayName ?? room.gameId,
-      hostName: seats.find((s) => s.seatIndex === 0)?.name ?? '',
+      hostName: seats.find((s) => s.userId === room.hostUserId)?.name ?? '',
       status: room.status,
       maxSeats: room.maxSeats,
       freeSeats: Math.max(0, room.maxSeats - seats.length),
     };
   }
 
-  async join(roomId: string, req: JoinRequest): Promise<JoinResponse> {
+  /**
+   * Takes the first free seat. With `userId` (a signed-in player) the seat belongs to that
+   * account; if the account already sits here, that seat gets fresh credentials instead.
+   */
+  async join(roomId: string, req: JoinRequest, userId?: string): Promise<JoinResponse> {
     const room = await this.invitedRoom(roomId, req.token);
     const credentials = newSecret();
     const seatIndex = await this.repo.takeFreeSeat(roomId, {
       name: req.name,
+      userId: userId ?? null,
       credentialsHash: hashSecret(credentials),
     });
+    if (seatIndex === 'already_seated') {
+      // only possible with an account (`userId` set)
+      const reissued = userId && (await this.reissueAccountSeat(roomId, userId));
+      if (!reissued) throw new ApiFailure('not_found'); // the seat was freed in between
+      return reissued;
+    }
     if (seatIndex === undefined) {
       throw new ApiFailure(room.status === 'waiting' ? 'room_full' : 'room_locked');
     }
+    this.seatEvents.roomChanged(roomId);
     return { seatIndex, credentials };
   }
 
   // --- seated players ------------------------------------------------------------
 
   async lobby(roomId: string, credentials: string): Promise<LobbyResponse> {
-    const you = await this.repo.findSeatByCredentialsHash(roomId, hashSecret(credentials));
+    const lobby = await this.lobbyFor(roomId, hashSecret(credentials));
+    if (!lobby) throw new ApiFailure('not_found');
+    return lobby;
+  }
+
+  /**
+   * The lobby as seen by the seat with this credentials hash, or undefined if that seat (or the
+   * room) is gone. The room connection uses this, as it only keeps the hash.
+   */
+  async lobbyFor(roomId: string, credentialsHash: string): Promise<LobbyResponse | undefined> {
+    const you = await this.repo.findSeatByCredentialsHash(roomId, credentialsHash);
     const room = you && (await this.repo.findRoom(roomId));
-    if (!you || !room) throw new ApiFailure('not_found');
+    if (!you || !room) return undefined;
     return {
       roomId,
       gameId: room.gameId,
       status: room.status,
       maxSeats: room.maxSeats,
-      seats: (await this.repo.listSeats(roomId)).map((seat) => toSeatInfo(room, seat)),
+      seats: (await this.repo.listSeats(roomId)).map((seat) => this.toSeatInfo(room, seat)),
       you: {
         seatIndex: you.seatIndex,
         isHost: you.userId === room.hostUserId,
@@ -198,7 +235,111 @@ export class RoomsService {
     };
   }
 
+  /** Leave your own seat. The host hands the room over first (or the room is deleted). */
+  async leave(roomId: string, credentials: string): Promise<void> {
+    const seat = await this.repo.findSeatByCredentialsHash(roomId, hashSecret(credentials));
+    const room = seat && (await this.repo.findRoom(roomId));
+    if (!seat || !room) throw new ApiFailure('not_found');
+    if (seat.userId === room.hostUserId && !(await this.handOver(room))) return; // room deleted
+    await this.removeSeat(roomId, seat.seatIndex);
+  }
+
+  // --- presence (called by the room connection) -------------------------------------
+
+  /**
+   * A seat has had no connection for the grace period. Everyone sees it as away; if it is the
+   * host of a waiting room, the room goes to someone else right away (or is deleted).
+   */
+  async seatAway(roomId: string, seatKey: string): Promise<void> {
+    const seat = await this.repo.findSeatByCredentialsHash(roomId, seatKey);
+    const room = seat && (await this.repo.findRoom(roomId));
+    if (!seat || !room) return;
+    if (room.status === 'waiting' && seat.userId === room.hostUserId) {
+      await this.handOver(room);
+      return;
+    }
+    this.seatEvents.roomChanged(roomId);
+  }
+
+  /** An away seat is connected again. */
+  seatBack(roomId: string): void {
+    this.seatEvents.roomChanged(roomId);
+  }
+
+  /** Away for the free-seat period: a guest's seat in a waiting room is freed. */
+  async seatExpired(roomId: string, seatKey: string): Promise<void> {
+    const seat = await this.repo.findSeatByCredentialsHash(roomId, seatKey);
+    const room = seat && (await this.repo.findRoom(roomId));
+    if (!seat || !room || room.status !== 'waiting' || seat.userId === room.hostUserId) return;
+    await this.removeSeat(roomId, seat.seatIndex);
+  }
+
   // --- helpers -------------------------------------------------------------------
+
+  /**
+   * Gives the room to the first present account holder (lowest seat, so usually whoever joined
+   * first). Returns false if nobody could take it and the room was deleted.
+   */
+  private async handOver(room: RoomRecord): Promise<boolean> {
+    const candidates = (await this.repo.listSeats(room.id)).flatMap((s) =>
+      s.userId !== null &&
+      s.userId !== room.hostUserId &&
+      !this.presence.isAway(room.id, s.credentialsHash)
+        ? [s.userId]
+        : [],
+    );
+    const result = await this.repo.handOverHost(
+      room.id,
+      room.hostUserId,
+      candidates,
+      LIMITS.maxActiveRoomsPerHost,
+    );
+    if (result.outcome === 'deleted') {
+      this.seatEvents.roomClosed(room.id);
+      return false;
+    }
+    this.seatEvents.roomChanged(room.id);
+    return true;
+  }
+
+  /** Frees a seat and tells everyone. */
+  private async removeSeat(roomId: string, seatIndex: number): Promise<boolean> {
+    if (!(await this.repo.freeSeat(roomId, seatIndex))) return false;
+    // In a started game seat index = playerID; the removed player stops receiving the game.
+    this.seatEvents.revoked(roomId, String(seatIndex));
+    this.seatEvents.roomChanged(roomId);
+    return true;
+  }
+
+  /** Fresh credentials for the account's seat; the old device stops receiving the game. */
+  private async reissueAccountSeat(
+    roomId: string,
+    userId: string,
+  ): Promise<SeatCredentials | undefined> {
+    const credentials = newSecret();
+    const replaced = await this.repo.replaceAccountSeatCredentials(
+      roomId,
+      userId,
+      hashSecret(credentials),
+    );
+    if (!replaced) return undefined;
+    this.seatEvents.revoked(roomId, String(replaced.seatIndex));
+    this.seatEvents.roomChanged(roomId);
+    return { seatIndex: replaced.seatIndex, credentials };
+  }
+
+  private async hostSeat(room: RoomRecord): Promise<SeatRecord | undefined> {
+    return (await this.repo.listSeats(room.id)).find((s) => s.userId === room.hostUserId);
+  }
+
+  private toSeatInfo(room: RoomRecord, seat: SeatRecord): SeatInfo {
+    return {
+      seatIndex: seat.seatIndex,
+      name: seat.name,
+      isHost: seat.userId === room.hostUserId,
+      away: this.presence.isAway(room.id, seat.credentialsHash),
+    };
+  }
 
   /** The game, if it exists and `maxSeats` is within its player range. */
   private validGame({ gameId, maxSeats }: { gameId: string; maxSeats: number }) {
@@ -215,7 +356,7 @@ export class RoomsService {
       gameId: room.gameId,
       status: room.status,
       maxSeats: room.maxSeats,
-      seats: (await this.repo.listSeats(room.id)).map((seat) => toSeatInfo(room, seat)),
+      seats: (await this.repo.listSeats(room.id)).map((seat) => this.toSeatInfo(room, seat)),
       createdAt: room.createdAt.toISOString(),
     };
   }
@@ -238,13 +379,6 @@ export class RoomsService {
     return `${this.publicOrigin}/join/${roomId}#t=${token}`;
   }
 }
-
-const toSeatInfo = (room: RoomRecord, seat: SeatRecord): SeatInfo => ({
-  seatIndex: seat.seatIndex,
-  name: seat.name,
-  isHost: seat.userId === room.hostUserId,
-  away: false,
-});
 
 /** Profile display names may be longer than seat names; cut by characters, not UTF-16 units. */
 const seatName = (displayName: string) =>

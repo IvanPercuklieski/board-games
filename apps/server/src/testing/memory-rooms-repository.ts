@@ -1,4 +1,5 @@
 import type {
+  HandOverResult,
   MatchBuilder,
   NewRoom,
   NewSeat,
@@ -81,6 +82,7 @@ export class MemoryRoomsRepository implements RoomsRepository {
     const room = this.rooms.get(roomId);
     if (!room) return undefined;
     const seats = this.seatsOf(roomId);
+    if (seat.userId && seats.some((s) => s.userId === seat.userId)) return 'already_seated';
     const taken = new Set(seats.map((s) => s.seatIndex));
     const free = Array.from({ length: room.maxSeats }, (_, i) => i).find((i) => !taken.has(i));
     if (free === undefined) return undefined;
@@ -123,6 +125,35 @@ export class MemoryRoomsRepository implements RoomsRepository {
       await this.storage.setPlayerSeat(roomId, seatIndex, { name: seat.name, credentialsHash });
     }
     return true;
+  }
+
+  async replaceAccountSeatCredentials(roomId: string, userId: string, credentialsHash: string) {
+    const seat = this.seatsOf(roomId).find((s) => s.userId === userId);
+    if (!seat) return undefined;
+    const previousCredentialsHash = seat.credentialsHash;
+    await this.replaceSeatCredentials(roomId, seat.seatIndex, credentialsHash);
+    return { seatIndex: seat.seatIndex, previousCredentialsHash };
+  }
+
+  async handOverHost(
+    roomId: string,
+    fromUserId: string,
+    candidates: string[],
+    maxRoomsPerHost: number,
+  ): Promise<HandOverResult> {
+    const room = this.rooms.get(roomId);
+    if (room?.hostUserId !== fromUserId) return { outcome: 'unchanged' };
+    const seated = new Set(this.seatsOf(roomId).map((s) => s.userId));
+    const hosted = (userId: string) =>
+      [...this.rooms.values()].filter((r) => r.hostUserId === userId).length;
+    const next = candidates.find((c) => seated.has(c) && hosted(c) < maxRoomsPerHost);
+    if (next === undefined) {
+      await this.deleteRoom(roomId);
+      return { outcome: 'deleted' };
+    }
+    room.hostUserId = next;
+    room.lastActivityAt = new Date();
+    return { outcome: 'handed_over', hostUserId: next };
   }
 
   async startRoom(roomId: string, build: MatchBuilder) {

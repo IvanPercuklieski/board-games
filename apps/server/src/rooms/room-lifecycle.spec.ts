@@ -77,7 +77,9 @@ describe('observed storage (what boardgame.io writes through)', () => {
   it('deletes the match and reopens the room as soon as the game is over', async () => {
     const id = await startedRoom();
     const ended = vi.fn();
+    const changed = vi.fn();
     seatEvents.onMatchEnded(ended);
+    seatEvents.onRoomChanged(changed);
     const observed = lifecycle.wrap(storage);
     const { metadata } = await current(id);
     await observed.setMetadata(id, { ...metadata, gameover: { winner: '0' } });
@@ -85,6 +87,7 @@ describe('observed storage (what boardgame.io writes through)', () => {
     expect(await repo.listSeats(id)).toHaveLength(2);
     expect((await storage.fetch(id, { state: true })).state).toBeUndefined();
     expect(ended).toHaveBeenCalledWith(id); // its players' sockets are disconnected
+    expect(changed).toHaveBeenCalledWith(id); // room connections see it waiting again
   });
 
   it('keeps the room for metadata writes without a game over', async () => {
@@ -141,8 +144,12 @@ describe('stale room sweep', () => {
     const fresh = await waitingRoom();
     repo.setLastActivity(stale, new Date(now - HOUR - 1));
     repo.setLastActivity(fresh, new Date(now - HOUR + 60_000));
+    const closed = vi.fn();
+    seatEvents.onRoomClosed(closed);
 
     expect(await lifecycle.sweepStale()).toBe(1);
+    expect(closed).toHaveBeenCalledWith(stale);
+    expect(closed).toHaveBeenCalledTimes(1);
     expect(await repo.findRoom(stale)).toBeUndefined();
     expect(await repo.findRoom(fresh)).toBeDefined();
   });

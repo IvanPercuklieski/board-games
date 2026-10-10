@@ -73,6 +73,7 @@ export class RoomLifecycle {
       });
       for (const id of ids) {
         await this.repo.deleteRoom(id);
+        this.seatEvents.roomClosed(id);
         deleted++;
       }
     });
@@ -93,6 +94,7 @@ export class RoomLifecycle {
   private async finishGame(matchID: string) {
     await this.repo.finishGame(matchID);
     this.seatEvents.matchEnded(matchID);
+    this.seatEvents.roomChanged(matchID); // the room is waiting again
   }
 
   /** Cleanup must never break gameplay or crash the server: failures are logged. */

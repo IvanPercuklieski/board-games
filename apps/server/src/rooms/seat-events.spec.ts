@@ -13,6 +13,21 @@ describe('SeatEvents', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  it.each(['roomChanged', 'roomClosed'] as const)(
+    'tells listeners about %s until they unsubscribe',
+    (event) => {
+      const events = new SeatEvents();
+      const listener = vi.fn();
+      const on = event === 'roomChanged' ? 'onRoomChanged' : 'onRoomClosed';
+      const unsubscribe = events[on](listener);
+      events[event]('room-1');
+      expect(listener).toHaveBeenCalledWith('room-1');
+      unsubscribe();
+      events[event]('room-2');
+      expect(listener).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it('tells listeners which match ended until they unsubscribe', () => {
     const events = new SeatEvents();
     const listener = vi.fn();
