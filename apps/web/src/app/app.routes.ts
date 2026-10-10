@@ -31,6 +31,11 @@ export const routes: Routes = [
     loadComponent: () => import('./features/my-rooms/my-rooms.page').then((m) => m.MyRoomsPage),
   },
   {
+    path: 'rooms/:roomId/play',
+    title: 'Playing · board·table',
+    loadComponent: () => import('./features/play/play.page').then((m) => m.PlayPage),
+  },
+  {
     // Host and guests: access is by the seat stored in this browser, not by login.
     path: 'rooms/:roomId',
     title: 'Waiting room · board·table',
