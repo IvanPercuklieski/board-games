@@ -7,6 +7,7 @@ import { claimSeat, createMatch } from './matches';
 import { MemoryStorage } from './testing/memory-storage';
 import {
   connectPlayer,
+  eventually,
   makeMoveAction,
   playMove,
   rawSocket,
@@ -198,6 +199,49 @@ describe('socket security', () => {
     );
     await sleep(300);
     expect((await db.fetch(matchID, { state: true })).state.G.cells).toEqual(Array(9).fill(null));
+  });
+
+  it('drops updates and chat from sockets that have not synced into a seat', async () => {
+    const { url, db } = await start();
+    const { socket } = await attacker(url);
+    for (let i = 0; i < 20; i++) {
+      socket.emit('update', makeMoveAction('clickCell', [0], '0', 'x'), 0, `random-${i}`, '0');
+      socket.emit('chat', `random-${i}`, { id: 'c', sender: '0', payload: 'hi' }, 'x');
+    }
+    await sleep(300);
+    // Dropped before boardgame.io sees them: no storage reads, no per-match server state.
+    expect(db.fetchCount).toBe(0);
+  });
+
+  it('only lets a seated socket act in its own match and seat', async () => {
+    const { url, db } = await start();
+    const matchA = await createMatch(db, 'tictactoe');
+    const matchB = await createMatch(db, 'tictactoe');
+    const aliceA = await claimSeat(db, matchA, 'Alice');
+    await claimSeat(db, matchA, 'Bob');
+    await claimSeat(db, matchB, 'Carol');
+    const { socket, received } = await attacker(url);
+    socket.emit('sync', matchA, '0', aliceA.credentials, 2);
+    await eventually(async () => expect(received).toContain('sync'));
+
+    const fetchesBefore = db.fetchCount;
+    socket.emit(
+      'update',
+      makeMoveAction('clickCell', [4], '0', aliceA.credentials),
+      0,
+      matchB,
+      '0',
+    );
+    socket.emit(
+      'update',
+      makeMoveAction('clickCell', [4], '1', aliceA.credentials),
+      0,
+      matchA,
+      '1',
+    );
+    await sleep(300);
+    expect(db.fetchCount).toBe(fetchesBefore);
+    expect((await db.fetch(matchB, { state: true })).state.G.cells[4]).toBeNull();
   });
 
   it('still accepts the real player after attacks', async () => {

@@ -12,6 +12,8 @@ interface Row {
 /** In-memory storage for unit tests. Same contract as PostgresStorage (see storage-contract.ts). */
 export class MemoryStorage extends Async {
   private readonly rows = new Map<string, Row>();
+  /** Number of fetch() calls, so tests can check that dropped messages never reach storage. */
+  fetchCount = 0;
 
   connect() {
     return Promise.resolve();
@@ -37,6 +39,7 @@ export class MemoryStorage extends Async {
   }
 
   async fetch<O extends StorageAPI.FetchOpts>(matchID: string, opts: O) {
+    this.fetchCount++;
     const row = this.rows.get(matchID);
     const result: Partial<StorageAPI.FetchFields> = {};
     if (row) {

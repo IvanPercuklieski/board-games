@@ -6,6 +6,9 @@ import { io } from 'socket.io-client';
 export type PlayerClient = ReturnType<typeof connectPlayer>;
 type ClientState = NonNullable<ReturnType<PlayerClient['getState']>>;
 
+type Listener = (state: ClientState) => void;
+const listeners = new WeakMap<object, Set<Listener>>();
+
 /** Connects a boardgame.io client to the server as a seated player (like a browser would). */
 export function connectPlayer(
   serverUrl: string,
@@ -20,6 +23,13 @@ export function connectPlayer(
     playerID: seat.playerID,
     credentials: seat.credentials,
     debug: false,
+  });
+  // Subscribe exactly once. boardgame.io 0.50's client numbers subscribers by the current count,
+  // so subscribing again after an unsubscribe can reuse an id and silently drop a listener.
+  const set = new Set<Listener>();
+  listeners.set(client, set);
+  client.subscribe((state) => {
+    if (state) for (const listener of [...set]) listener(state);
   });
   client.start();
   return client;
@@ -65,19 +75,21 @@ export function waitForState(
   predicate: (state: ClientState) => boolean,
   timeoutMs = 10_000,
 ): Promise<ClientState> {
+  const set = listeners.get(client)!;
   return new Promise((resolve, reject) => {
-    let unsubscribe = () => {};
+    const current = client.getState();
+    if (current && predicate(current)) return resolve(current);
+    const listener: Listener = (state) => {
+      if (!predicate(state)) return;
+      set.delete(listener);
+      clearTimeout(timer);
+      resolve(state);
+    };
     const timer = setTimeout(() => {
-      unsubscribe();
+      set.delete(listener);
       reject(new Error('Timed out waiting for client state'));
     }, timeoutMs);
-    unsubscribe = client.subscribe((state) => {
-      if (state && predicate(state)) {
-        clearTimeout(timer);
-        queueMicrotask(() => unsubscribe());
-        resolve(state);
-      }
-    });
+    set.add(listener);
   });
 }
 
