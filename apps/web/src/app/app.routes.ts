@@ -31,6 +31,13 @@ export const routes: Routes = [
     loadComponent: () => import('./features/my-rooms/my-rooms.page').then((m) => m.MyRoomsPage),
   },
   {
+    // Host and guests: access is by the seat stored in this browser, not by login.
+    path: 'rooms/:roomId',
+    title: 'Waiting room · board·table',
+    loadComponent: () =>
+      import('./features/waiting-room/waiting-room.page').then((m) => m.WaitingRoomPage),
+  },
+  {
     // Guests: no login. The invite token travels in the URL fragment (#t=...).
     path: 'join/:roomId',
     title: 'Join a table · board·table',

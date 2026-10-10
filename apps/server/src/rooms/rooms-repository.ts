@@ -69,6 +69,15 @@ export interface RoomsRepository {
   freeSeat(roomId: string, seatIndex: number): Promise<boolean>;
   setInviteTokenHash(roomId: string, hash: string): Promise<void>;
   /**
+   * Gives an existing seat new credentials (old ones stop working), also in a started match.
+   * False if there is no such seat.
+   */
+  replaceSeatCredentials(
+    roomId: string,
+    seatIndex: number,
+    credentialsHash: string,
+  ): Promise<boolean>;
+  /**
    * Starts a waiting room: renumbers the seats to 0..n-1 (keeping their order), sets
    * `maxSeats` to n, marks it `playing` and stores the match built by `build`. If `build`
    * throws, nothing changes and the error is rethrown.

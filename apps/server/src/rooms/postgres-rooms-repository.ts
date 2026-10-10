@@ -125,6 +125,22 @@ export class PostgresRoomsRepository implements RoomsRepository {
     });
   }
 
+  replaceSeatCredentials(roomId: string, seatIndex: number, credentialsHash: string) {
+    return this.sql.begin(async (tx) => {
+      const room = await lockRoom(tx, roomId);
+      if (!room) return false;
+      const [seat] = await tx<{ name: string }[]>`
+        update public.room_seats set credentials_hash = ${credentialsHash}
+        where room_id = ${roomId} and seat_index = ${seatIndex}
+        returning name`;
+      if (!seat) return false;
+      if (room.status === 'playing') {
+        await setPlayerSeatInDb(tx, roomId, seatIndex, { name: seat.name, credentialsHash });
+      }
+      return true;
+    });
+  }
+
   async setInviteTokenHash(roomId: string, hash: string) {
     await this.sql`update public.rooms set invite_token_hash = ${hash} where id = ${roomId}`;
   }

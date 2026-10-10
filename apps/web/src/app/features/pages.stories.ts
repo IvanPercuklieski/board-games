@@ -6,7 +6,10 @@ import { ApiClient } from '../core/api-client';
 import { CatalogPage } from './catalog/catalog.page';
 import { GameDetailPage } from './game-detail/game-detail.page';
 import { JoinPage } from './join/join.page';
+import { signal } from '@angular/core';
+import { AuthService } from '../core/auth.service';
 import { MyRoomsPage } from './my-rooms/my-rooms.page';
+import { WaitingRoomPage } from './waiting-room/waiting-room.page';
 
 /** Host pages with a mocked API (no login needed in Storybook). */
 const rooms: ListRoomsResponse = {
@@ -82,4 +85,65 @@ export const Join: StoryObj<JoinPage> = {
     template: `<bt-join-page roomId="AbCdEfGhIjKlMnOpQrSt_-" fragment="t=TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" />`,
   }),
   decorators: [(story) => ({ ...story(), moduleMetadata: { imports: [JoinPage] } })],
+};
+
+const ROOM = 'AbCdEfGhIjKlMnOpQrSt_-';
+const lobbyFor = (seatIndex: number) => ({
+  roomId: ROOM,
+  gameId: 'tictactoe',
+  status: 'waiting' as const,
+  maxSeats: 2,
+  seats: [
+    { seatIndex: 0, name: 'Ivan', isHost: true },
+    ...(seatIndex === 1 ? [{ seatIndex: 1, name: 'Mara Lind', isHost: false }] : []),
+  ],
+  you: { seatIndex },
+});
+
+/** Seeds this browser's seat (and the host's invite link) before the page renders. */
+function seed(seatIndex: number) {
+  localStorage.setItem(
+    `bt-seat:${ROOM}`,
+    JSON.stringify({ seatIndex, credentials: 'C'.repeat(43) }),
+  );
+  if (seatIndex === 0) {
+    localStorage.setItem(
+      `bt-invite:${ROOM}`,
+      `https://board-table.example/join/${ROOM}#t=${'T'.repeat(43)}`,
+    );
+  }
+}
+
+export const WaitingRoomHost: StoryObj<WaitingRoomPage> = {
+  name: 'Waiting room (host)',
+  render: () => {
+    seed(0);
+    return { template: `<bt-waiting-room-page roomId="${ROOM}" />` };
+  },
+  decorators: [
+    applicationConfig({
+      providers: [
+        { provide: ApiClient, useValue: { lobby: async () => lobbyFor(0) } },
+        { provide: AuthService, useValue: { isSignedIn: signal(true) } },
+      ],
+    }),
+    (story) => ({ ...story(), moduleMetadata: { imports: [WaitingRoomPage] } }),
+  ],
+};
+
+export const WaitingRoomGuest: StoryObj<WaitingRoomPage> = {
+  name: 'Waiting room (guest)',
+  render: () => {
+    seed(1);
+    return { template: `<bt-waiting-room-page roomId="${ROOM}" />` };
+  },
+  decorators: [
+    applicationConfig({
+      providers: [
+        { provide: ApiClient, useValue: { lobby: async () => lobbyFor(1) } },
+        { provide: AuthService, useValue: { isSignedIn: signal(false) } },
+      ],
+    }),
+    (story) => ({ ...story(), moduleMetadata: { imports: [WaitingRoomPage] } }),
+  ],
 };

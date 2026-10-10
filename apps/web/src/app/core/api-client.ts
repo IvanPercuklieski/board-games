@@ -8,6 +8,7 @@ import {
   listRoomsResponseSchema,
   lobbyResponseSchema,
   previewResponseSchema,
+  seatCredentialsSchema,
   SEAT_CREDENTIALS_HEADER,
   type ApiErrorCode,
   type CreateRoomRequest,
@@ -18,6 +19,7 @@ import {
   type ListRoomsResponse,
   type LobbyResponse,
   type PreviewResponse,
+  type SeatCredentials,
   type Infer,
   type Schema,
 } from '@board-table/shared';
@@ -56,6 +58,13 @@ export class ApiClient {
   async regenerateInvite(roomId: string): Promise<InviteResponse> {
     return this.call(inviteResponseSchema, (headers) =>
       this.http.post(`/api/rooms/${roomId}/invite`, null, { headers }),
+    );
+  }
+
+  /** Fresh credentials for the host's seat (e.g. the room was created on another device). */
+  async reclaimHostSeat(roomId: string): Promise<SeatCredentials> {
+    return this.call(seatCredentialsSchema, (headers) =>
+      this.http.post(`/api/rooms/${roomId}/host-seat`, null, { headers }),
     );
   }
 

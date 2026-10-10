@@ -312,6 +312,23 @@ describe('rooms flow', () => {
     expect(await c.repo.findRoom(room.roomId)).toBeUndefined();
   });
 
+  it('lets the host reclaim their seat on another device', async () => {
+    const c = await setup();
+    const room = await createRoom(c, c.aliceToken);
+    const res = await api(c.url, `/api/rooms/${room.roomId}/host-seat`, {
+      method: 'POST',
+      headers: bearer(c.aliceToken),
+    });
+    expect(res.status).toBe(200);
+    const seat = joinResponseSchema.parse(await res.json());
+    expect(seat.seatIndex).toBe(0);
+    await expectError(
+      await api(c.url, `/api/rooms/${room.roomId}/host-seat`, { method: 'POST' }),
+      401,
+      'unauthorized',
+    );
+  });
+
   it('maps rule failures to HTTP statuses', async () => {
     const c = await setup();
     const room = await createRoom(c, c.aliceToken);

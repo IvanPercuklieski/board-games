@@ -23,6 +23,8 @@ const COVERS: Record<string, Type<unknown>> = {
   styles: `
     :host {
       display: grid;
+      /* one row filling the tile's (aspect-ratio) height, so the art can size by height */
+      grid-template-rows: minmax(0, 1fr);
       place-items: center;
       aspect-ratio: 4 / 3;
       padding: var(--bt-space-4);

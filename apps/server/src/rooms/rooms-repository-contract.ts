@@ -206,6 +206,34 @@ export function describeRoomsRepositoryContract(
       });
     });
 
+    describe('replacing seat credentials (host on a new device)', () => {
+      it('swaps the stored hash; the old one no longer finds the seat', async () => {
+        const room = await createRoom(alice);
+        expect(await repo.replaceSeatCredentials(room.id, 0, 'new-host-hash')).toBe(true);
+        expect(await repo.findSeatByCredentialsHash(room.id, `h-${alice}`)).toBeUndefined();
+        expect(await repo.findSeatByCredentialsHash(room.id, 'new-host-hash')).toMatchObject({
+          seatIndex: 0,
+          name: 'Host',
+          userId: alice,
+        });
+      });
+
+      it('also updates a running match', async () => {
+        const room = await createRoom(alice);
+        await repo.takeFreeSeat(room.id, guest('Bob'));
+        await repo.startRoom(room.id, (seats) => buildMatch('tictactoe', seats));
+        await repo.replaceSeatCredentials(room.id, 0, 'new-host-hash');
+        const { metadata } = await storage.fetch(room.id, { metadata: true });
+        expect(metadata.players[0]).toMatchObject({ name: 'Host', credentials: 'new-host-hash' });
+      });
+
+      it('returns false for an unknown room or seat', async () => {
+        const room = await createRoom(alice);
+        expect(await repo.replaceSeatCredentials(room.id, 1, 'x')).toBe(false);
+        expect(await repo.replaceSeatCredentials(newRoomId(), 0, 'x')).toBe(false);
+      });
+    });
+
     it('deletes a room with its seats and match', async () => {
       const room = await createRoom(alice);
       await repo.takeFreeSeat(room.id, guest('Bob'));

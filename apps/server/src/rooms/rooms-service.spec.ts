@@ -263,6 +263,23 @@ describe('host-only actions', () => {
   });
 });
 
+describe('reclaimHostSeat', () => {
+  it('gives the host fresh seat credentials and invalidates the old ones', async () => {
+    const room = await aliceRoom(2);
+    const reclaimed = await service.reclaimHostSeat(alice, room.roomId);
+    expect(reclaimed.seatIndex).toBe(0);
+    expect(reclaimed.credentials).not.toBe(room.seat.credentials);
+    await failsWith(service.lobby(room.roomId, room.seat.credentials), 'not_found');
+    expect((await service.lobby(room.roomId, reclaimed.credentials)).you.seatIndex).toBe(0);
+  });
+
+  it('answers not_found to anyone but the host', async () => {
+    const room = await aliceRoom(2);
+    await failsWith(service.reclaimHostSeat(bob, room.roomId), 'not_found');
+    await failsWith(service.reclaimHostSeat(alice, newRoomId()), 'not_found');
+  });
+});
+
 describe('lobby', () => {
   it('shows seats and the caller, and the playerID once started', async () => {
     const room = await aliceRoom(2);

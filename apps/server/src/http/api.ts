@@ -116,6 +116,9 @@ function buildRoutes({ service, verifier, limiter, publicConfig }: ApiDeps): Rou
     route('POST', `/api/rooms/${ROOM}/invite`, async (ctx, [id]) => {
       ctx.body = await service.regenerateInvite(await requireHost(ctx), roomId(id));
     }),
+    route('POST', `/api/rooms/${ROOM}/host-seat`, async (ctx, [id]) => {
+      ctx.body = await service.reclaimHostSeat(await requireHost(ctx), roomId(id));
+    }),
     route('POST', `/api/rooms/${ROOM}/start`, async (ctx, [id]) => {
       await service.start(await requireHost(ctx), roomId(id));
       ctx.status = 204;

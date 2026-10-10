@@ -109,6 +109,17 @@ export class MemoryRoomsRepository implements RoomsRepository {
     if (room) room.inviteTokenHash = hash;
   }
 
+  async replaceSeatCredentials(roomId: string, seatIndex: number, credentialsHash: string) {
+    const room = this.rooms.get(roomId);
+    const seat = this.seatsOf(roomId).find((s) => s.seatIndex === seatIndex);
+    if (!room || !seat) return false;
+    seat.credentialsHash = credentialsHash;
+    if (room.status === 'playing') {
+      await this.storage.setPlayerSeat(roomId, seatIndex, { name: seat.name, credentialsHash });
+    }
+    return true;
+  }
+
   async startRoom(roomId: string, build: MatchBuilder) {
     const room = this.rooms.get(roomId);
     if (room?.status !== 'waiting') return 'not_waiting' as const;

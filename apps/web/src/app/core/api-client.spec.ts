@@ -39,6 +39,14 @@ describe('ApiClient', () => {
     await expect(result).resolves.toMatchObject({ roomId });
   });
 
+  it('reclaims the host seat with the host login', async () => {
+    const result = api.reclaimHostSeat(roomId);
+    const req = await pending('POST', `/api/rooms/${roomId}/host-seat`);
+    expect(req.request.headers.get('Authorization')).toBe('Bearer host-token');
+    req.flush({ seatIndex: 0, credentials: secret });
+    await expect(result).resolves.toEqual({ seatIndex: 0, credentials: secret });
+  });
+
   it('refuses host calls when signed out', async () => {
     accessToken.mockResolvedValueOnce(null);
     await expect(api.listRooms()).rejects.toMatchObject({ code: 'unauthorized' });

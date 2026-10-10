@@ -10,6 +10,7 @@ import {
   type ListRoomsResponse,
   type LobbyResponse,
   type PreviewResponse,
+  type SeatCredentials,
   type SeatInfo,
 } from '@board-table/shared';
 import { buildMatch, MatchError } from '../matches';
@@ -112,6 +113,19 @@ export class RoomsService {
     await this.hostedRoom(userId, roomId);
     if (seatIndex === 0) throw new ApiFailure('forbidden'); // the host closes the room instead
     if (!(await this.repo.freeSeat(roomId, seatIndex))) throw new ApiFailure('not_found');
+  }
+
+  /**
+   * The host opened the room on another device (seat secrets live only in the browser):
+   * issue fresh credentials for seat 0. The old device's credentials stop working.
+   */
+  async reclaimHostSeat(userId: string, roomId: string): Promise<SeatCredentials> {
+    await this.hostedRoom(userId, roomId);
+    const credentials = newSecret();
+    if (!(await this.repo.replaceSeatCredentials(roomId, 0, hashSecret(credentials)))) {
+      throw new ApiFailure('not_found');
+    }
+    return { seatIndex: 0, credentials };
   }
 
   async closeRoom(userId: string, roomId: string): Promise<void> {
