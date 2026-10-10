@@ -64,6 +64,7 @@ async function setup({
     startRoom: vi.fn(async () => undefined),
     freeSeat: vi.fn(async () => undefined),
     closeRoom: vi.fn(async () => undefined),
+    updateRoom: vi.fn(),
   };
   const clipboard = { copy: vi.fn(() => true) };
   const navigate = vi.spyOn(Router.prototype, 'navigateByUrl').mockResolvedValue(true);
@@ -160,6 +161,16 @@ describe('WaitingRoomPage', () => {
       await userEvent.click(start);
       expect(api.startRoom).toHaveBeenCalledWith(roomId);
       await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith(`/rooms/${roomId}/play`));
+    });
+
+    it('shows the current game and opens the change-game dialog', async () => {
+      await setup({ lobbyResult: async () => bothSeated() });
+      const card = await screen.findByRole('region', { name: 'Game' });
+      expect(within(card).getByText('Tic-tac-toe · 2 seats')).toBeTruthy();
+      await userEvent.click(within(card).getByRole('button', { name: /Change game/ }));
+      const dialog = await screen.findByRole('dialog', { name: 'Change game' });
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+      await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     });
 
     it('offers to play again after a game at this table', async () => {

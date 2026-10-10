@@ -99,6 +99,22 @@ describe('ApiClient', () => {
     await expect(result).rejects.toMatchObject({ code: 'network' });
   });
 
+  it('changes the game of a room as the host and returns the room summary', async () => {
+    const result = api.updateRoom(roomId, { gameId: 'tictactoe', maxSeats: 2 });
+    const req = await pending('PATCH', `/api/rooms/${roomId}`);
+    expect(req.request.headers.get('Authorization')).toBe('Bearer host-token');
+    expect(req.request.body).toEqual({ gameId: 'tictactoe', maxSeats: 2 });
+    req.flush({
+      roomId,
+      gameId: 'tictactoe',
+      status: 'waiting',
+      maxSeats: 2,
+      seats: [],
+      createdAt: new Date().toISOString(),
+    });
+    await expect(result).resolves.toMatchObject({ roomId, maxSeats: 2 });
+  });
+
   it('host actions without a body resolve on 204', async () => {
     const result = api.startRoom(roomId);
     (await pending('POST', `/api/rooms/${roomId}/start`)).flush(null, {

@@ -8,6 +8,7 @@ import {
   listRoomsResponseSchema,
   lobbyResponseSchema,
   previewResponseSchema,
+  roomSummarySchema,
   seatCredentialsSchema,
   SEAT_CREDENTIALS_HEADER,
   type ApiErrorCode,
@@ -19,7 +20,9 @@ import {
   type ListRoomsResponse,
   type LobbyResponse,
   type PreviewResponse,
+  type RoomSummary,
   type SeatCredentials,
+  type UpdateRoomRequest,
   type Infer,
   type Schema,
 } from '@board-table/shared';
@@ -71,6 +74,13 @@ export class ApiClient {
   async startRoom(roomId: string): Promise<void> {
     await this.call(null, (headers) =>
       this.http.post(`/api/rooms/${roomId}/start`, null, { headers }),
+    );
+  }
+
+  /** Changes the game and seat count of a waiting room. */
+  async updateRoom(roomId: string, body: UpdateRoomRequest): Promise<RoomSummary> {
+    return this.call(roomSummarySchema, (headers) =>
+      this.http.patch(`/api/rooms/${roomId}`, body, { headers }),
     );
   }
 

@@ -1,4 +1,5 @@
 import { Clipboard } from '@angular/cdk/clipboard';
+import { Dialog } from '@angular/cdk/dialog';
 import {
   booleanAttribute,
   ChangeDetectionStrategy,
@@ -28,6 +29,7 @@ import { SpinnerComponent } from '../../ui/feedback/spinner.component';
 import { IconComponent } from '../../ui/icon/icon.component';
 import { SeatTokenComponent } from '../../ui/seat-token/seat-token.component';
 import { ToastService } from '../../ui/toast/toast.service';
+import { openChangeGameDialog } from './change-game-dialog.component';
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -128,6 +130,16 @@ type State = 'loading' | 'ready' | 'no-seat' | 'gone';
 
               @if (isHost()) {
                 <aside class="side">
+                  <bt-card class="panel" role="region" aria-labelledby="bt-game-panel-title">
+                    <h2 id="bt-game-panel-title">Game</h2>
+                    <p class="muted">{{ gameName() }} · {{ lobby.maxSeats }} seats</p>
+                    <div class="row">
+                      <button bt-button variant="secondary" (click)="changeGame(lobby)">
+                        <bt-icon name="arrows-clockwise" /> Change game
+                      </button>
+                    </div>
+                  </bt-card>
+
                   <bt-card class="panel">
                     <h2>Invite link</h2>
                     @if (inviteUrl(); as url) {
@@ -356,6 +368,7 @@ export class WaitingRoomPage implements OnInit {
   private readonly seatStore = inject(SeatStore);
   private readonly router = inject(Router);
   private readonly confirmService = inject(ConfirmService);
+  private readonly dialog = inject(Dialog);
   private readonly clipboard = inject(Clipboard);
   private readonly toasts = inject(ToastService);
 
@@ -495,6 +508,18 @@ export class WaitingRoomPage implements OnInit {
       this.startBusy.set(false);
     }
     await this.poller.runNow(); // picks up "playing" and moves to the table
+  }
+
+  protected async changeGame(lobby: LobbyResponse) {
+    const room = await openChangeGameDialog(this.dialog, {
+      roomId: this.roomId(),
+      gameId: lobby.gameId,
+      maxSeats: lobby.maxSeats,
+      seated: lobby.seats.length,
+    });
+    if (!room) return;
+    this.toasts.show({ message: 'Game changed', tone: 'success' });
+    await this.poller.runNow(); // shows the new game and seats
   }
 
   protected async freeSeat(seat: SeatInfo) {
