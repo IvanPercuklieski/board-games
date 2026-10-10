@@ -97,16 +97,18 @@ describe('PlayPage', () => {
     expect(screen.getByRole('status').textContent).toContain('Ivan’s turn');
   });
 
-  it('shows the result and forgets the seat when the game ends', async () => {
+  it('shows the result and leads back to the same table, keeping the seat', async () => {
     const { sessions } = await setup();
     await screen.findByText('Stub board for player 1');
     sessions[0]!.gameover.set({ winner: '1' });
     expect(await screen.findByRole('heading', { name: 'You won!' })).toBeTruthy();
-    expect(screen.getByText(/Ask Ivan for a new invite/)).toBeTruthy();
-    expect(TestBed.inject(SeatStore).seat(roomId)).toBeUndefined();
+    const back = screen.getByRole('link', { name: 'Back to the table' });
+    expect(back.getAttribute('href')).toBe(`/rooms/${roomId}?played=true`);
+    expect(screen.queryByRole('link', { name: 'Back to games' })).toBeNull();
+    expect(TestBed.inject(SeatStore).seat(roomId)).toEqual({ seatIndex: 1, credentials: secret });
   });
 
-  it('offers the host to play again', async () => {
+  it('also offers the host a way back to the games', async () => {
     const { sessions } = await setup({
       seat: { seatIndex: 0, credentials: secret },
       lobbyResult: async () => lobby({ you: { seatIndex: 0, playerID: '0' } }),
@@ -114,8 +116,21 @@ describe('PlayPage', () => {
     });
     await screen.findByText('Stub board for player 0');
     sessions[0]!.gameover.set({ winner: '1' });
-    const again = await screen.findByRole('link', { name: 'Host again' });
-    expect(again.getAttribute('href')).toBe('/games/tictactoe');
+    expect(await screen.findByRole('link', { name: 'Back to the table' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Back to games' }).getAttribute('href')).toBe('/');
+  });
+
+  it('does not show reconnecting or check the seat once the game is over', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { sessions } = await setup();
+    await screen.findByText('Stub board for player 1');
+    const api = TestBed.inject(ApiClient) as unknown as { lobby: ReturnType<typeof vi.fn> };
+    sessions[0]!.gameover.set({ winner: '0' });
+    sessions[0]!.isConnected.set(false); // the server disconnects everyone at game end
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(screen.queryByText('Reconnecting…')).toBeNull();
+    expect(api.lobby).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 
   it('tells you when the connection drops', async () => {

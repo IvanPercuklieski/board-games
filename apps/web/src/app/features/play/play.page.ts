@@ -63,7 +63,7 @@ type Session = GameSession<unknown>;
           <bt-empty-state
             icon="door-open"
             title="This table has been cleared"
-            description="The game has ended, the host closed the room, or your seat was given to someone else."
+            description="The host closed the room, or your seat was given to someone else."
           />
         }
         @case ('unsupported') {
@@ -89,7 +89,7 @@ type Session = GameSession<unknown>;
               <bt-turn-banner [players]="session.players()" [gameover]="session.gameover()" />
             </header>
             <bt-player-strip [players]="session.players()" />
-            @if (!session.isConnected()) {
+            @if (!session.isConnected() && session.gameover() === undefined) {
               <p class="reconnecting"><bt-spinner size="sm" /> Reconnecting…</p>
             }
 
@@ -102,17 +102,21 @@ type Session = GameSession<unknown>;
             @if (session.gameover() !== undefined) {
               <bt-card class="result">
                 <h2>{{ result() }}</h2>
-                @if (isHost()) {
-                  <p class="muted">The table has been cleared. Set up another round?</p>
-                  <div class="actions">
-                    <a bt-button [routerLink]="['/games', gameId()]">Host again</a>
+                <p class="muted">
+                  @if (isHost()) {
+                    Everyone keeps their seat. Play again or pick another game at the table.
+                  } @else {
+                    Everyone keeps their seat. {{ hostName() }} can start another round.
+                  }
+                </p>
+                <div class="actions">
+                  <a bt-button [routerLink]="['/rooms', roomId()]" [queryParams]="{ played: true }"
+                    >Back to the table</a
+                  >
+                  @if (isHost()) {
                     <a bt-button variant="secondary" routerLink="/">Back to games</a>
-                  </div>
-                } @else {
-                  <p class="muted">
-                    Thanks for playing! Ask {{ hostName() }} for a new invite to play again.
-                  </p>
-                }
+                  }
+                </div>
               </bt-card>
             }
           }
@@ -220,10 +224,6 @@ export class PlayPage implements OnInit {
       if (session && !session.isConnected() && session.gameover() === undefined) {
         this.seatCheck = setTimeout(() => void this.checkSeat(), SEAT_CHECK_DELAY_MS);
       }
-    });
-    // The server deletes the room when the game ends; this browser's seat goes with it.
-    effect(() => {
-      if (this.session()?.gameover() !== undefined) this.seatStore.forget(this.roomId());
     });
   }
 

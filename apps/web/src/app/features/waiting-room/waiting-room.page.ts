@@ -1,5 +1,6 @@
 import { Clipboard } from '@angular/cdk/clipboard';
 import {
+  booleanAttribute,
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
@@ -180,7 +181,7 @@ type State = 'loading' | 'ready' | 'no-seat' | 'gone';
                       [loading]="startBusy()"
                       (click)="start()"
                     >
-                      <bt-icon name="play" /> Start game
+                      <bt-icon name="play" /> {{ played() ? 'Play again' : 'Start game' }}
                     </button>
                     @if (!canStart()) {
                       <p class="muted center-text">
@@ -347,6 +348,8 @@ type State = 'loading' | 'ready' | 'no-seat' | 'gone';
 export class WaitingRoomPage implements OnInit {
   /** Route param. */
   readonly roomId = input.required<string>();
+  /** Query param set by the play page after a game at this table. */
+  readonly played = input(false, { transform: booleanAttribute });
 
   private readonly api = inject(ApiClient);
   private readonly auth = inject(AuthService);

@@ -42,6 +42,7 @@ interface Options {
   invite?: string | null;
   lobbyResult?: () => Promise<LobbyResponse>;
   confirm?: boolean;
+  played?: boolean;
 }
 
 async function setup({
@@ -50,6 +51,7 @@ async function setup({
   invite = inviteUrl,
   lobbyResult = async () => lobby(),
   confirm = true,
+  played,
 }: Options = {}) {
   localStorage.clear();
   if (seat) localStorage.setItem(`bt-seat:${roomId}`, JSON.stringify(seat));
@@ -73,7 +75,7 @@ async function setup({
       { provide: ConfirmService, useValue: { confirm: vi.fn(async () => confirm) } },
       { provide: Clipboard, useValue: clipboard },
     ],
-    componentInputs: { roomId },
+    componentInputs: { roomId, ...(played !== undefined && { played }) },
   });
   return { api, clipboard, navigate, view };
 }
@@ -158,6 +160,12 @@ describe('WaitingRoomPage', () => {
       await userEvent.click(start);
       expect(api.startRoom).toHaveBeenCalledWith(roomId);
       await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith(`/rooms/${roomId}/play`));
+    });
+
+    it('offers to play again after a game at this table', async () => {
+      await setup({ lobbyResult: async () => bothSeated(), played: true });
+      expect(await screen.findByRole('button', { name: /Play again/ })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: /Start game/ })).toBeNull();
     });
 
     it('frees a guest seat after confirming', async () => {
