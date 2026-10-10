@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import type { LobbyResponse } from '@board-table/shared';
 import { render, screen } from '@testing-library/angular';
+import userEvent from '@testing-library/user-event';
 import { ApiClient, ApiError } from '../../core/api-client';
 import { AuthService } from '../../core/auth.service';
 import { SeatStore } from '../../core/seat-store';
@@ -102,10 +103,33 @@ describe('PlayPage', () => {
     await screen.findByText('Stub board for player 1');
     sessions[0]!.gameover.set({ winner: '1' });
     expect(await screen.findByRole('heading', { name: 'You won!' })).toBeTruthy();
-    const back = screen.getByRole('link', { name: 'Back to the table' });
-    expect(back.getAttribute('href')).toBe(`/rooms/${roomId}?played=true`);
+    expect(screen.getByRole('button', { name: 'Back to the table' })).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Back to games' })).toBeNull();
     expect(TestBed.inject(SeatStore).seat(roomId)).toEqual({ seatIndex: 1, credentials: secret });
+  });
+
+  it('goes back to the table once the server has reopened the room', async () => {
+    const statuses = ['playing', 'playing', 'waiting'] as const; // load, then two checks
+    let call = 0;
+    const { sessions, navigate } = await setup({
+      lobbyResult: async () => lobby({ status: statuses[Math.min(call++, statuses.length - 1)]! }),
+    });
+    await screen.findByText('Stub board for player 1');
+    sessions[0]!.gameover.set({ winner: '1' });
+    await userEvent.click(await screen.findByRole('button', { name: 'Back to the table' }));
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith(`/rooms/${roomId}?played=true`));
+    expect(call).toBe(3);
+  });
+
+  it('still goes back to the table if the room stays busy', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { sessions, navigate } = await setup();
+    await screen.findByText('Stub board for player 1');
+    sessions[0]!.gameover.set({ winner: '1' });
+    (await screen.findByRole('button', { name: 'Back to the table' })).click();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(navigate).toHaveBeenCalledWith(`/rooms/${roomId}?played=true`);
+    vi.useRealTimers();
   });
 
   it('also offers the host a way back to the games', async () => {
@@ -116,7 +140,7 @@ describe('PlayPage', () => {
     });
     await screen.findByText('Stub board for player 0');
     sessions[0]!.gameover.set({ winner: '1' });
-    expect(await screen.findByRole('link', { name: 'Back to the table' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Back to the table' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Back to games' }).getAttribute('href')).toBe('/');
   });
 

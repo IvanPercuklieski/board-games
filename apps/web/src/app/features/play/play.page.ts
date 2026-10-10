@@ -28,6 +28,9 @@ import { SpinnerComponent } from '../../ui/feedback/spinner.component';
 
 /** How long a lost connection may last before we ask whether the seat still exists. */
 const SEAT_CHECK_DELAY_MS = 3000;
+/** How long "Back to the table" waits for the server to reopen the room after a game. */
+const REOPEN_CHECKS = 6;
+const REOPEN_CHECK_DELAY_MS = 500;
 
 type State = 'loading' | 'playing' | 'no-seat' | 'gone' | 'offline' | 'unsupported';
 type Session = GameSession<unknown>;
@@ -110,9 +113,9 @@ type Session = GameSession<unknown>;
                   }
                 </p>
                 <div class="actions">
-                  <a bt-button [routerLink]="['/rooms', roomId()]" [queryParams]="{ played: true }"
-                    >Back to the table</a
-                  >
+                  <button bt-button [loading]="leaving()" (click)="backToTable()">
+                    Back to the table
+                  </button>
                   @if (isHost()) {
                     <a bt-button variant="secondary" routerLink="/">Back to games</a>
                   }
@@ -211,10 +214,15 @@ export class PlayPage implements OnInit {
 
   private credentials: string | undefined;
   private seatCheck: ReturnType<typeof setTimeout> | undefined;
+  private reopenWait: ReturnType<typeof setTimeout> | undefined;
+  private destroyed = false;
+  protected readonly leaving = signal(false);
 
   constructor() {
     inject(DestroyRef).onDestroy(() => {
+      this.destroyed = true;
       clearTimeout(this.seatCheck);
+      clearTimeout(this.reopenWait);
       this.session()?.stop();
     });
     // A lost connection may mean the host gave this seat away (the server disconnects it).
@@ -277,6 +285,33 @@ export class PlayPage implements OnInit {
     this.session.set(session);
     this.state.set('playing');
     this.board.set(await loadBoard());
+  }
+
+  /**
+   * Players see the game end slightly before the server has reopened the room, and the
+   * waiting room sends anyone in a `playing` room straight back here. So wait (briefly)
+   * until the lobby says `waiting`, then go; after the last check go anyway.
+   */
+  protected async backToTable() {
+    if (this.leaving()) return;
+    this.leaving.set(true);
+    for (let check = 0; check < REOPEN_CHECKS && !(await this.roomReopened()); check++) {
+      await new Promise(
+        (resolve) => (this.reopenWait = setTimeout(resolve, REOPEN_CHECK_DELAY_MS)),
+      );
+      if (this.destroyed) return;
+    }
+    if (!this.destroyed) await this.router.navigateByUrl(`/rooms/${this.roomId()}?played=true`);
+  }
+
+  /** True once the room is waiting again, or when asking is pointless (seat gone, offline). */
+  private async roomReopened(): Promise<boolean> {
+    if (!this.credentials) return true;
+    try {
+      return (await this.api.lobby(this.roomId(), this.credentials)).status === 'waiting';
+    } catch {
+      return true; // the waiting room explains a missing room or a lost connection
+    }
   }
 
   /** Still disconnected: if the seat no longer exists, stop and explain instead of waiting. */
