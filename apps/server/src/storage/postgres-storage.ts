@@ -1,24 +1,69 @@
 import type { LogEntry, Server, State, StorageAPI } from 'boardgame.io';
 import { Async } from 'boardgame.io/internal';
-import postgres from 'postgres';
+import type postgres from 'postgres';
+import type { Sql, Tx } from '../db';
+import {
+  keepStoredIdentity,
+  playerForSeat,
+  type GameStorage,
+  type MatchSeat,
+} from './game-storage';
 
 type Json = postgres.JSONValue;
 
 /**
+ * Gives/frees a seat in `bgio.matches` metadata. Runs inside a transaction so the rooms
+ * repository can do it atomically together with `room_seats` changes.
+ */
+export async function setPlayerSeatInDb(
+  sql: Tx,
+  matchID: string,
+  playerID: number,
+  seat: MatchSeat | undefined,
+): Promise<boolean> {
+  const [row] = await sql<{ metadata: Server.MatchData }[]>`
+    select metadata from bgio.matches where match_id = ${matchID} for update`;
+  const current = row?.metadata.players[playerID];
+  if (!row || !current) return false;
+  const metadata = {
+    ...row.metadata,
+    players: { ...row.metadata.players, [playerID]: playerForSeat(current, seat) },
+  };
+  await sql`
+    update bgio.matches set metadata = ${sql.json(metadata as unknown as Json)}, updated_at = now()
+    where match_id = ${matchID}`;
+  return true;
+}
+
+/** Inserts a new match. Runs inside a transaction so rooms can be started atomically. */
+export async function insertMatchInDb(
+  sql: Tx,
+  matchID: string,
+  { initialState, metadata }: StorageAPI.CreateMatchOpts,
+): Promise<void> {
+  const json = (value: unknown) => sql.json(value as Json);
+  await sql`
+    insert into bgio.matches (match_id, game_name, state, initial_state, metadata, log)
+    values (
+      ${matchID}, ${metadata.gameName}, ${json(initialState)}, ${json(initialState)},
+      ${json(metadata)}, '[]'::jsonb
+    )`;
+}
+
+/**
  * boardgame.io storage backed by the private `bgio.matches` table in Supabase Postgres.
+ * Uses the server's shared connection pool (the owner ends it).
  *
  * close() waits for in-flight queries; calls made after close() (e.g. boardgame.io's
  * disconnect handlers during shutdown) are ignored instead of failing, so they can't
  * become unhandled rejections that crash the process.
  */
-export class PostgresStorage extends Async {
-  private readonly sql: postgres.Sql;
+export class PostgresStorage extends Async implements GameStorage {
   private closed = false;
   private readonly pending = new Set<Promise<unknown>>();
 
-  constructor(databaseUrl: string) {
+  constructor(private readonly sql: Sql) {
     super();
-    this.sql = postgres(databaseUrl, { max: 5, idle_timeout: 30, onnotice: () => {} });
   }
 
   async connect() {
@@ -29,7 +74,6 @@ export class PostgresStorage extends Async {
     if (this.closed) return;
     this.closed = true;
     await Promise.allSettled([...this.pending]);
-    await this.sql.end({ timeout: 5 });
   }
 
   private run<T>(afterClose: () => T, task: () => Promise<T>): Promise<T> {
@@ -45,18 +89,13 @@ export class PostgresStorage extends Async {
 
   private ignoredAfterClose = () => undefined;
 
-  override createMatch(matchID: string, { initialState, metadata }: StorageAPI.CreateMatchOpts) {
+  override createMatch(matchID: string, opts: StorageAPI.CreateMatchOpts) {
     const failAfterClose = () => {
       throw new Error('Storage is closed');
     };
-    return this.run(failAfterClose, async () => {
-      await this.sql`
-      insert into bgio.matches (match_id, game_name, state, initial_state, metadata, log)
-      values (
-        ${matchID}, ${metadata.gameName}, ${this.json(initialState)}, ${this.json(initialState)},
-        ${this.json(metadata)}, '[]'::jsonb
-      )`;
-    });
+    return this.run(failAfterClose, () =>
+      this.sql.begin((tx) => insertMatchInDb(tx, matchID, opts)),
+    );
   }
 
   setState(matchID: string, state: State, deltalog?: LogEntry[]) {
@@ -74,12 +113,29 @@ export class PostgresStorage extends Async {
     });
   }
 
+  /** boardgame.io's metadata writes; player identity stays as stored (see GameStorage). */
   setMetadata(matchID: string, metadata: Server.MatchData) {
-    return this.run(this.ignoredAfterClose, async () => {
-      await this.sql`
-        update bgio.matches set metadata = ${this.json(metadata)}, updated_at = now()
-        where match_id = ${matchID}`;
-    });
+    return this.run(this.ignoredAfterClose, () =>
+      this.sql.begin(async (tx) => {
+        const [row] = await tx<{ metadata: Server.MatchData }[]>`
+          select metadata from bgio.matches where match_id = ${matchID} for update`;
+        if (!row) return;
+        const merged = {
+          ...metadata,
+          players: keepStoredIdentity(metadata.players, row.metadata.players),
+        };
+        await tx`
+          update bgio.matches set metadata = ${tx.json(merged as unknown as Json)}, updated_at = now()
+          where match_id = ${matchID}`;
+      }),
+    );
+  }
+
+  setPlayerSeat(matchID: string, playerID: number, seat: MatchSeat | undefined) {
+    return this.run(
+      () => false,
+      () => this.sql.begin((tx) => setPlayerSeatInDb(tx, matchID, playerID, seat)),
+    );
   }
 
   fetch<O extends StorageAPI.FetchOpts>(matchID: string, opts: O) {

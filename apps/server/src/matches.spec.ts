@@ -1,6 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { buildMatch, MatchError, setMatchSeat } from './matches';
-import { MemoryStorage } from './testing/memory-storage';
+import { describe, expect, it } from 'vitest';
+import { buildMatch, MatchError } from './matches';
 
 const alice = { name: 'Alice', credentialsHash: 'hash-alice' };
 const bob = { name: 'Bob', credentialsHash: 'hash-bob' };
@@ -27,32 +26,5 @@ describe('buildMatch', () => {
     expect(() => buildMatch('tictactoe', [alice, bob, { ...bob, name: 'Carol' }])).toThrow(
       MatchError,
     );
-  });
-});
-
-describe('setMatchSeat', () => {
-  let db: MemoryStorage;
-  const matchID = 'match-1';
-  beforeEach(async () => {
-    db = new MemoryStorage();
-    await db.createMatch(matchID, buildMatch('tictactoe', [alice, bob]));
-  });
-
-  it('frees a seat: name and credentials are removed', async () => {
-    await setMatchSeat(db, matchID, 1, undefined);
-    const { metadata } = await db.fetch(matchID, { metadata: true });
-    expect(metadata.players[1]).toEqual({ id: 1 });
-    expect(metadata.players[0]).toEqual({ id: 0, name: 'Alice', credentials: 'hash-alice' });
-  });
-
-  it('gives a seat to a new player', async () => {
-    await setMatchSeat(db, matchID, 1, { name: 'Carol', credentialsHash: 'hash-carol' });
-    const { metadata } = await db.fetch(matchID, { metadata: true });
-    expect(metadata.players[1]).toEqual({ id: 1, name: 'Carol', credentials: 'hash-carol' });
-  });
-
-  it('refuses unknown matches and seats', async () => {
-    await expect(setMatchSeat(db, 'missing', 0, undefined)).rejects.toThrow(MatchError);
-    await expect(setMatchSeat(db, matchID, 5, undefined)).rejects.toThrow(MatchError);
   });
 });

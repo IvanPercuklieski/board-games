@@ -2,12 +2,13 @@ import { readFile } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { extname, join } from 'node:path';
 import { gameRegistry } from '@board-table/games';
-import type { Async } from 'boardgame.io/internal';
 import { Server, SocketIO } from 'boardgame.io/server';
 import type { Middleware } from 'koa';
 import serve from 'koa-static';
 import type { ServerConfig } from './config';
 import { guardSockets, isSeatOwner } from './socket-security';
+import { createSql } from './db';
+import type { GameStorage } from './storage/game-storage';
 import { PostgresStorage } from './storage/postgres-storage';
 
 /** Max size of a single websocket message from a client. */
@@ -15,7 +16,7 @@ const MAX_SOCKET_MESSAGE_BYTES = 64 * 1024;
 
 export interface RunningApp {
   url: string;
-  db: Async;
+  db: GameStorage;
   stop(): Promise<void>;
 }
 
@@ -26,9 +27,10 @@ export interface RunningApp {
  * boardgame.io's built-in lobby REST API (create/list/join/leave matches), which is public
  * by design. Rooms and seats are managed by our own code instead (see matches.ts).
  */
-export function createApp({ config, db }: { config: ServerConfig; db?: Async }) {
-  const storage = db ?? new PostgresStorage(config.databaseUrl);
-  const ownsStorage = db === undefined;
+export function createApp({ config, db }: { config: ServerConfig; db?: GameStorage }) {
+  // Tests inject in-memory storage; otherwise the app owns one Postgres pool.
+  const sql = db ? undefined : createSql(config.databaseUrl);
+  const storage: GameStorage = db ?? new PostgresStorage(sql!);
 
   return {
     async start(): Promise<RunningApp> {
@@ -74,7 +76,10 @@ export function createApp({ config, db }: { config: ServerConfig; db?: Async }) 
           io.close();
           appServer.closeAllConnections();
           await new Promise<void>((resolve) => appServer.close(() => resolve()));
-          if (ownsStorage) await (storage as PostgresStorage).close();
+          if (sql) {
+            await (storage as PostgresStorage).close();
+            await sql.end({ timeout: 5 });
+          }
         },
       };
     },

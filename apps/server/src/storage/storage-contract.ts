@@ -1,14 +1,14 @@
 import type { LogEntry, Server, State } from 'boardgame.io';
-import type { Async } from 'boardgame.io/internal';
+import type { GameStorage } from './game-storage';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 /** Shared behaviour every boardgame.io storage implementation must satisfy. */
 export function describeStorageContract(
   name: string,
-  setup: () => Promise<{ db: Async; cleanup: (matchIDs: string[]) => Promise<void> }>,
+  setup: () => Promise<{ db: GameStorage; cleanup: (matchIDs: string[]) => Promise<void> }>,
 ) {
   describe(`${name} storage contract`, () => {
-    let db: Async;
+    let db: GameStorage;
     let cleanup: (matchIDs: string[]) => Promise<void>;
     const created: string[] = [];
     const prefix = `test-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -87,11 +87,64 @@ export function describeStorageContract(
       const id = newID();
       await db.createMatch(id, { initialState: state(0), metadata: metadata() });
       const updated = metadata('tictactoe', {
-        players: { 0: { id: 0, name: 'Alice', credentials: 'secret' }, 1: { id: 1 } },
+        players: { 0: { id: 0, isConnected: true }, 1: { id: 1 } },
         updatedAt: 2000,
       });
       await db.setMetadata(id, updated);
       expect((await db.fetch(id, { metadata: true })).metadata).toEqual(updated);
+    });
+
+    describe('player identity (name + credentials) is owned by setPlayerSeat', () => {
+      const seated = () =>
+        metadata('tictactoe', {
+          players: { 0: { id: 0, name: 'Alice', credentials: 'hash-a' }, 1: { id: 1 } },
+        });
+
+      it('gives a seat to a player and frees it again', async () => {
+        const id = newID();
+        await db.createMatch(id, { initialState: state(0), metadata: seated() });
+        expect(await db.setPlayerSeat(id, 1, { name: 'Bob', credentialsHash: 'hash-b' })).toBe(
+          true,
+        );
+        expect((await db.fetch(id, { metadata: true })).metadata.players[1]).toEqual({
+          id: 1,
+          name: 'Bob',
+          credentials: 'hash-b',
+        });
+        expect(await db.setPlayerSeat(id, 0, undefined)).toBe(true);
+        expect((await db.fetch(id, { metadata: true })).metadata.players[0]).toEqual({ id: 0 });
+      });
+
+      it('returns false for an unknown match or seat', async () => {
+        const id = newID();
+        await db.createMatch(id, { initialState: state(0), metadata: seated() });
+        expect(await db.setPlayerSeat(`${prefix}-missing`, 0, undefined)).toBe(false);
+        expect(await db.setPlayerSeat(id, 7, undefined)).toBe(false);
+      });
+
+      it("ignores names/credentials in boardgame.io's own metadata writes", async () => {
+        const id = newID();
+        await db.createMatch(id, { initialState: state(0), metadata: seated() });
+        // e.g. boardgame.io wrote back a stale copy after we freed/reassigned a seat
+        await db.setMetadata(
+          id,
+          metadata('tictactoe', {
+            players: {
+              0: { id: 0, name: 'Stale', credentials: 'stale-hash', isConnected: true },
+              1: { id: 1, name: 'Ghost', credentials: 'ghost-hash', isConnected: false },
+            },
+            updatedAt: 5000,
+            gameover: { winner: '0' },
+          }),
+        );
+        const { metadata: stored } = await db.fetch(id, { metadata: true });
+        expect(stored.players).toEqual({
+          0: { id: 0, name: 'Alice', credentials: 'hash-a', isConnected: true },
+          1: { id: 1, isConnected: false },
+        });
+        expect(stored.updatedAt).toBe(5000);
+        expect(stored.gameover).toEqual({ winner: '0' });
+      });
     });
 
     it('wipes a match', async () => {

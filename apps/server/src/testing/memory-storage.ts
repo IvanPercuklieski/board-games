@@ -1,6 +1,12 @@
 import type { LogEntry, Server, State } from 'boardgame.io';
 import { Async } from 'boardgame.io/internal';
 import type { StorageAPI } from 'boardgame.io';
+import {
+  keepStoredIdentity,
+  playerForSeat,
+  type GameStorage,
+  type MatchSeat,
+} from '../storage/game-storage';
 
 interface Row {
   state: State;
@@ -10,7 +16,7 @@ interface Row {
 }
 
 /** In-memory storage for unit tests. Same contract as PostgresStorage (see storage-contract.ts). */
-export class MemoryStorage extends Async {
+export class MemoryStorage extends Async implements GameStorage {
   private readonly rows = new Map<string, Row>();
   /** Number of fetch() calls, so tests can check that dropped messages never reach storage. */
   fetchCount = 0;
@@ -35,7 +41,22 @@ export class MemoryStorage extends Async {
 
   async setMetadata(matchID: string, metadata: Server.MatchData) {
     const row = this.rows.get(matchID);
-    if (row) row.metadata = clone(metadata);
+    if (!row) return;
+    const incoming = clone(metadata);
+    row.metadata = {
+      ...incoming,
+      players: keepStoredIdentity(incoming.players, row.metadata.players),
+    };
+  }
+
+  async setPlayerSeat(matchID: string, playerID: number, seat: MatchSeat | undefined) {
+    const current = this.rows.get(matchID)?.metadata.players[playerID];
+    if (!current) return false;
+    this.rows.get(matchID)!.metadata.players[playerID] = playerForSeat(
+      current,
+      seat && clone(seat),
+    );
+    return true;
   }
 
   async fetch<O extends StorageAPI.FetchOpts>(matchID: string, opts: O) {

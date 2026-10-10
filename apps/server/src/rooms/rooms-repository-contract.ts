@@ -1,0 +1,219 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { buildMatch } from '../matches';
+import { newRoomId } from '../secrets';
+import type { GameStorage } from '../storage/game-storage';
+import type { NewRoom, RoomsRepository } from './rooms-repository';
+
+export interface RoomsRepositoryFixture {
+  repo: RoomsRepository;
+  storage: GameStorage;
+  /** Creates a user with a profile and returns its id. */
+  createHost(displayName: string): Promise<string>;
+  cleanup(): Promise<void>;
+}
+
+/** Shared behaviour every RoomsRepository implementation must satisfy. */
+export function describeRoomsRepositoryContract(
+  name: string,
+  setup: () => Promise<RoomsRepositoryFixture>,
+) {
+  describe(`${name} rooms repository contract`, () => {
+    let repo: RoomsRepository;
+    let storage: GameStorage;
+    let fixture: RoomsRepositoryFixture;
+    let alice: string;
+    let bob: string;
+
+    beforeAll(async () => {
+      fixture = await setup();
+      ({ repo, storage } = fixture);
+      alice = await fixture.createHost('Alice');
+      bob = await fixture.createHost('Bob');
+    });
+    afterAll(() => fixture.cleanup());
+
+    const newRoom = (host: string, maxSeats = 2): NewRoom => ({
+      id: newRoomId(),
+      gameId: 'tictactoe',
+      hostUserId: host,
+      maxSeats,
+      inviteTokenHash: `invite-${Math.random()}`,
+    });
+    const hostSeat = (host: string) => ({
+      name: 'Host',
+      userId: host,
+      credentialsHash: `h-${host}`,
+    });
+    const guest = (name: string) => ({ name, credentialsHash: `hash-${name}` });
+
+    async function createRoom(host: string, maxSeats = 2) {
+      const room = newRoom(host, maxSeats);
+      await repo.createRoom(room, hostSeat(host));
+      return room;
+    }
+
+    it('finds profiles by user id', async () => {
+      expect(await repo.findProfile(alice)).toEqual({ displayName: 'Alice' });
+      expect(await repo.findProfile('99999999-9999-9999-9999-999999999999')).toBeUndefined();
+    });
+
+    it('creates a waiting room with the host in seat 0', async () => {
+      const room = await createRoom(alice);
+      const stored = await repo.findRoom(room.id);
+      expect(stored).toMatchObject({ ...room, status: 'waiting' });
+      expect(stored!.createdAt).toBeInstanceOf(Date);
+      expect(stored!.lastActivityAt).toBeInstanceOf(Date);
+      expect(await repo.listSeats(room.id)).toEqual([
+        { seatIndex: 0, name: 'Host', userId: alice, credentialsHash: `h-${alice}` },
+      ]);
+    });
+
+    it('returns undefined for unknown rooms', async () => {
+      expect(await repo.findRoom(newRoomId())).toBeUndefined();
+      expect(await repo.listSeats(newRoomId())).toEqual([]);
+    });
+
+    it('counts and lists rooms per host, newest first', async () => {
+      const before = await repo.countRoomsByHost(bob);
+      const first = await createRoom(bob);
+      const second = await createRoom(bob);
+      expect(await repo.countRoomsByHost(bob)).toBe(before + 2);
+      const ids = (await repo.listRoomsByHost(bob)).map((r) => r.id);
+      expect(ids.indexOf(second.id)).toBeLessThan(ids.indexOf(first.id));
+      expect((await repo.listRoomsByHost(alice)).map((r) => r.id)).not.toContain(first.id);
+    });
+
+    it('gives guests the lowest free seat and refuses when full', async () => {
+      const room = await createRoom(alice, 3);
+      expect(await repo.takeFreeSeat(room.id, guest('Bob'))).toBe(1);
+      expect(await repo.takeFreeSeat(room.id, guest('Carol'))).toBe(2);
+      expect(await repo.takeFreeSeat(room.id, guest('Dave'))).toBeUndefined();
+      expect((await repo.listSeats(room.id)).map((s) => s.name)).toEqual(['Host', 'Bob', 'Carol']);
+    });
+
+    it('never gives the same seat to simultaneous joins', async () => {
+      const room = await createRoom(alice, 3);
+      const results = await Promise.all(
+        ['A', 'B', 'C', 'D', 'E'].map((n) => repo.takeFreeSeat(room.id, guest(n))),
+      );
+      expect(results.filter((r) => r !== undefined).sort()).toEqual([1, 2]);
+      expect(await repo.listSeats(room.id)).toHaveLength(3);
+    });
+
+    it('reuses a freed seat', async () => {
+      const room = await createRoom(alice, 3);
+      await repo.takeFreeSeat(room.id, guest('Bob'));
+      await repo.takeFreeSeat(room.id, guest('Carol'));
+      expect(await repo.freeSeat(room.id, 1)).toBe(true);
+      expect(await repo.freeSeat(room.id, 1)).toBe(false);
+      expect(await repo.takeFreeSeat(room.id, guest('Dave'))).toBe(1);
+    });
+
+    it('finds a seat by its credentials hash, only within that room', async () => {
+      const room = await createRoom(alice);
+      const other = await createRoom(alice);
+      await repo.takeFreeSeat(room.id, guest('Bob'));
+      expect(await repo.findSeatByCredentialsHash(room.id, 'hash-Bob')).toMatchObject({
+        seatIndex: 1,
+        name: 'Bob',
+      });
+      expect(await repo.findSeatByCredentialsHash(other.id, 'hash-Bob')).toBeUndefined();
+      expect(await repo.findSeatByCredentialsHash(room.id, 'nope')).toBeUndefined();
+    });
+
+    it('replaces the invite token hash', async () => {
+      const room = await createRoom(alice);
+      await repo.setInviteTokenHash(room.id, 'new-hash');
+      expect((await repo.findRoom(room.id))!.inviteTokenHash).toBe('new-hash');
+    });
+
+    it('touch moves last activity forward', async () => {
+      const room = await createRoom(alice);
+      const before = (await repo.findRoom(room.id))!.lastActivityAt;
+      await new Promise((r) => setTimeout(r, 20));
+      await repo.touch(room.id);
+      expect((await repo.findRoom(room.id))!.lastActivityAt.getTime()).toBeGreaterThan(
+        before.getTime(),
+      );
+    });
+
+    describe('starting a room', () => {
+      it('compacts seats, locks the seat count and stores the match', async () => {
+        const room = await createRoom(alice, 3);
+        await repo.takeFreeSeat(room.id, guest('Bob'));
+        await repo.takeFreeSeat(room.id, guest('Carol'));
+        await repo.freeSeat(room.id, 1); // seats 0 and 2 remain
+
+        let builtFrom: unknown;
+        const result = await repo.startRoom(room.id, (seats) => {
+          builtFrom = seats;
+          return buildMatch('tictactoe', seats);
+        });
+
+        expect(result).toBe('started');
+        expect(builtFrom).toEqual([
+          { name: 'Host', credentialsHash: `h-${alice}` },
+          { name: 'Carol', credentialsHash: 'hash-Carol' },
+        ]);
+        expect(await repo.findRoom(room.id)).toMatchObject({ status: 'playing', maxSeats: 2 });
+        expect((await repo.listSeats(room.id)).map((s) => [s.seatIndex, s.name])).toEqual([
+          [0, 'Host'],
+          [1, 'Carol'],
+        ]);
+        const { metadata } = await storage.fetch(room.id, { metadata: true });
+        expect(metadata.players[1]).toMatchObject({ name: 'Carol', credentials: 'hash-Carol' });
+      });
+
+      it('starts only once', async () => {
+        const room = await createRoom(alice);
+        await repo.takeFreeSeat(room.id, guest('Bob'));
+        const build = (seats: Parameters<typeof buildMatch>[1]) => buildMatch('tictactoe', seats);
+        expect(await repo.startRoom(room.id, build)).toBe('started');
+        expect(await repo.startRoom(room.id, build)).toBe('not_waiting');
+        expect(await repo.startRoom(newRoomId(), build)).toBe('not_waiting');
+      });
+
+      it('changes nothing when building the match fails', async () => {
+        const room = await createRoom(alice); // only the host: too few players
+        await expect(
+          repo.startRoom(room.id, (seats) => buildMatch('tictactoe', seats)),
+        ).rejects.toThrow();
+        expect(await repo.findRoom(room.id)).toMatchObject({ status: 'waiting', maxSeats: 2 });
+        expect((await storage.fetch(room.id, { metadata: true })).metadata).toBeUndefined();
+      });
+
+      it('keeps the match players in sync when seats are freed and retaken', async () => {
+        const room = await createRoom(alice);
+        await repo.takeFreeSeat(room.id, guest('Bob'));
+        await repo.startRoom(room.id, (seats) => buildMatch('tictactoe', seats));
+
+        await repo.freeSeat(room.id, 1);
+        expect((await storage.fetch(room.id, { metadata: true })).metadata.players[1]).toEqual({
+          id: 1,
+        });
+        expect(await repo.takeFreeSeat(room.id, guest('Eve'))).toBe(1);
+        expect(
+          (await storage.fetch(room.id, { metadata: true })).metadata.players[1],
+        ).toMatchObject({ name: 'Eve', credentials: 'hash-Eve' });
+      });
+    });
+
+    it('deletes a room with its seats and match', async () => {
+      const room = await createRoom(alice);
+      await repo.takeFreeSeat(room.id, guest('Bob'));
+      await repo.startRoom(room.id, (seats) => buildMatch('tictactoe', seats));
+      await repo.deleteRoom(room.id);
+      expect(await repo.findRoom(room.id)).toBeUndefined();
+      expect(await repo.listSeats(room.id)).toEqual([]);
+      expect((await storage.fetch(room.id, { state: true })).state).toBeUndefined();
+    });
+
+    it('lists rooms inactive since a cutoff', async () => {
+      const room = await createRoom(alice);
+      const inFuture = new Date(Date.now() + 60_000);
+      const inPast = new Date(Date.now() - 60_000);
+      expect(await repo.listRoomIdsInactiveSince(inFuture)).toContain(room.id);
+      expect(await repo.listRoomIdsInactiveSince(inPast)).not.toContain(room.id);
+    });
+  });
+}

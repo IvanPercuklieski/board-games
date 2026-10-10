@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApp } from './app';
+import { createSql } from './db';
 import { PostgresStorage } from './storage/postgres-storage';
 import { devDatabaseUrl } from './testing/dev-env';
 import { createSeatedMatch } from './testing/matches';
@@ -15,9 +16,10 @@ const config = {
 
 const matchIDs: string[] = [];
 afterAll(async () => {
-  const db = new PostgresStorage(config.databaseUrl);
+  const sql = createSql(config.databaseUrl);
+  const db = new PostgresStorage(sql);
   for (const id of matchIDs) await db.wipe(id);
-  await db.close();
+  await sql.end();
 });
 
 describe('server with Postgres storage (board-games-dev)', () => {

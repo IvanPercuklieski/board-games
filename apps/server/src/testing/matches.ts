@@ -1,5 +1,5 @@
-import type { Async } from 'boardgame.io/internal';
-import { buildMatch, setMatchSeat } from '../matches';
+import { buildMatch } from '../matches';
+import type { GameStorage } from '../storage/game-storage';
 import { hashSecret, newRoomId, newSecret } from '../secrets';
 
 export interface TestSeat {
@@ -12,7 +12,7 @@ export interface TestSeat {
  * Returns the raw secrets the way a browser would hold them.
  */
 export async function createSeatedMatch(
-  db: Async,
+  db: GameStorage,
   names: (string | null)[],
   gameId = 'tictactoe',
 ): Promise<{ matchID: string; seats: Record<number, TestSeat> }> {
@@ -26,7 +26,7 @@ export async function createSeatedMatch(
 
   const seats: Record<number, TestSeat> = {};
   for (const [i, name] of names.entries()) {
-    if (name === null) await setMatchSeat(db, matchID, i, undefined);
+    if (name === null) await db.setPlayerSeat(matchID, i, undefined);
     else seats[i] = { playerID: String(i), credentials: secrets[i]! };
   }
   return { matchID, seats };
