@@ -5,6 +5,8 @@ export interface ServerConfig {
   /** Origin the web app is served from; the only origin allowed for websockets/CORS. */
   publicOrigin: string;
   databaseUrl: string;
+  /** Supabase project URL; its public signing keys are used to verify login tokens. */
+  supabaseUrl: string;
   /** Folder with the built Angular app. When unset, the server only serves the API/websockets. */
   webDistDir: string | undefined;
 }
@@ -13,6 +15,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   PUBLIC_ORIGIN: z.url().transform((url) => url.replace(/\/+$/, '')),
   DATABASE_URL: z.string().regex(/^postgres(ql)?:\/\//, 'must be a postgres:// connection string'),
+  SUPABASE_URL: z.url({ protocol: /^https$/ }).transform((url) => new URL(url).origin),
   WEB_DIST_DIR: z.string().min(1).optional(),
 });
 
@@ -28,6 +31,7 @@ export function loadConfig(env: Record<string, string | undefined>): ServerConfi
     port: e.PORT,
     publicOrigin: e.PUBLIC_ORIGIN,
     databaseUrl: e.DATABASE_URL,
+    supabaseUrl: e.SUPABASE_URL,
     webDistDir: e.WEB_DIST_DIR,
   };
 }

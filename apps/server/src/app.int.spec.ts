@@ -9,6 +9,7 @@ const config = {
   port: 0,
   publicOrigin: 'http://localhost:4200',
   databaseUrl: devDatabaseUrl(),
+  supabaseUrl: 'https://abc.supabase.co',
   webDistDir: undefined,
 };
 

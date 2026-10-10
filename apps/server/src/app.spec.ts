@@ -26,7 +26,13 @@ afterEach(async () => {
 async function start(opts: { webDistDir?: string } = {}) {
   const db = new MemoryStorage();
   running = await createApp({
-    config: { port: 0, publicOrigin: ORIGIN, databaseUrl: 'unused', webDistDir: opts.webDistDir },
+    config: {
+      port: 0,
+      publicOrigin: ORIGIN,
+      databaseUrl: 'unused',
+      supabaseUrl: 'https://abc.supabase.co',
+      webDistDir: opts.webDistDir,
+    },
     db,
   }).start();
   return { db, url: running.url };

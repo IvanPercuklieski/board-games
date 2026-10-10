@@ -13,7 +13,9 @@
   },
   "dependencies": {
     "@board-table/games": "*",
+    "@board-table/shared": "*",
     "boardgame.io": "0.50.2",
+    "jose": "^6.2.12",
     "koa-static": "^5.0.0",
     "postgres": "^3.4.9",
     "zod": "^4.6.5"
