@@ -13,9 +13,10 @@ import {
 } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { getGameDefinition } from '@board-table/games';
+import type { LobbyResponse } from '@board-table/shared';
 import { ApiClient, ApiError } from '../../core/api-client';
-import { AuthService } from '../../core/auth.service';
 import { ErrorService } from '../../core/error.service';
+import { ROOM_CONNECTION_FACTORY, type RoomConnection } from '../../core/room-connection';
 import { SeatStore } from '../../core/seat-store';
 import { describeGameOver } from '../../game-kit/describe-game-over';
 import { PlayerStripComponent } from '../../game-kit/player-strip.component';
@@ -27,11 +28,8 @@ import { CardComponent } from '../../ui/card/card.component';
 import { EmptyStateComponent } from '../../ui/empty-state/empty-state.component';
 import { SpinnerComponent } from '../../ui/feedback/spinner.component';
 
-/** How long a lost connection may last before we ask whether the seat still exists. */
-const SEAT_CHECK_DELAY_MS = 3000;
 /** How long "Back to the table" waits for the server to reopen the room after a game. */
-const REOPEN_CHECKS = 6;
-const REOPEN_CHECK_DELAY_MS = 500;
+const REOPEN_WAIT_MS = 3000;
 
 type State = 'loading' | 'playing' | 'no-seat' | 'gone' | 'offline' | 'unsupported';
 type Session = GameSession<unknown>;
@@ -191,49 +189,54 @@ export class PlayPage implements OnInit {
   readonly roomId = input.required<string>();
 
   private readonly api = inject(ApiClient);
-  private readonly auth = inject(AuthService);
   private readonly seatStore = inject(SeatStore);
   private readonly router = inject(Router);
   private readonly boards = inject(GAME_BOARDS);
   private readonly createSession = inject(GAME_SESSION_FACTORY);
   private readonly errors = inject(ErrorService);
+  private readonly connect = inject(ROOM_CONNECTION_FACTORY);
 
   protected readonly state = signal<State>('loading');
   protected readonly session = signal<Session | null>(null);
   protected readonly board = signal<Type<unknown> | null>(null);
   protected readonly gameId = signal('');
-  private readonly youAreSeat0 = signal(false);
-  protected readonly hostName = signal('the host');
+  /** The room as loaded, then as pushed by the live room connection. */
+  private readonly loadedLobby = signal<LobbyResponse | undefined>(undefined);
+  private readonly connection = signal<RoomConnection | undefined>(undefined);
+  private readonly room = computed(() => this.connection()?.lobby() ?? this.loadedLobby());
+  protected readonly hostName = computed(
+    () => this.room()?.seats.find((s) => s.isHost)?.name ?? 'the host',
+  );
 
   protected readonly gameName = computed(
     () => getGameDefinition(this.gameId())?.displayName ?? 'Game',
   );
-  protected readonly isHost = computed(() => this.youAreSeat0() && this.auth.isSignedIn());
+  protected readonly isHost = computed(() => this.room()?.you.isHost ?? false);
   protected readonly result = computed(() => {
     const session = this.session();
     return session ? describeGameOver(session.gameover(), session.players()) : '';
   });
 
-  private credentials: string | undefined;
-  private seatCheck: ReturnType<typeof setTimeout> | undefined;
   private reopenWait: ReturnType<typeof setTimeout> | undefined;
-  private destroyed = false;
   protected readonly leaving = signal(false);
 
   constructor() {
     inject(DestroyRef).onDestroy(() => {
-      this.destroyed = true;
-      clearTimeout(this.seatCheck);
       clearTimeout(this.reopenWait);
       this.session()?.stop();
+      this.connection()?.stop();
     });
-    // A lost connection may mean the host gave this seat away (the server disconnects it).
+    // The room says the table is gone for us (seat freed or reissued, room closed).
     effect(() => {
-      const session = this.session();
-      clearTimeout(this.seatCheck);
-      if (session && !session.isConnected() && session.gameover() === undefined) {
-        this.seatCheck = setTimeout(() => void this.checkSeat(), SEAT_CHECK_DELAY_MS);
-      }
+      if (!this.connection()?.closed()) return;
+      this.session()?.stop();
+      this.seatStore.forget(this.roomId());
+      this.state.set('gone');
+      this.errors.report(new ApiError('not_found', 404));
+    });
+    // "Back to the table" goes as soon as the room is open again (see backToTable).
+    effect(() => {
+      if (this.leaving() && this.connection()?.lobby()?.status === 'waiting') this.goToTable();
     });
   }
 
@@ -250,7 +253,6 @@ export class PlayPage implements OnInit {
     }
     this.state.set('loading');
 
-    this.credentials = seat.credentials;
     let lobby;
     try {
       lobby = await this.api.lobby(roomId, seat.credentials);
@@ -281,8 +283,7 @@ export class PlayPage implements OnInit {
     }
 
     this.gameId.set(lobby.gameId);
-    this.youAreSeat0.set(lobby.you.seatIndex === 0);
-    this.hostName.set(lobby.seats.find((s) => s.isHost)?.name ?? 'the host');
+    this.loadedLobby.set(lobby);
 
     const names: string[] = [];
     for (const s of lobby.seats) names[s.seatIndex] = s.name;
@@ -295,50 +296,26 @@ export class PlayPage implements OnInit {
     });
     session.start();
     this.session.set(session);
+    // The room connection keeps this seat present and tells us when the table is gone.
+    this.connection.set(this.connect({ roomId, credentials: seat.credentials }));
     this.board.set(board);
     this.state.set('playing');
   }
 
   /**
    * Players see the game end slightly before the server has reopened the room, and the
-   * waiting room sends anyone in a `playing` room straight back here. So wait (briefly)
-   * until the lobby says `waiting`, then go; after the last check go anyway.
+   * waiting room sends anyone in a `playing` room straight back here. So wait until the room
+   * connection says `waiting` (an effect goes then), or at most REOPEN_WAIT_MS.
    */
-  protected async backToTable() {
+  protected backToTable() {
     if (this.leaving()) return;
     this.leaving.set(true);
-    for (let check = 0; check < REOPEN_CHECKS && !(await this.roomReopened()); check++) {
-      await new Promise(
-        (resolve) => (this.reopenWait = setTimeout(resolve, REOPEN_CHECK_DELAY_MS)),
-      );
-      if (this.destroyed) return;
-    }
-    if (!this.destroyed) await this.router.navigateByUrl(`/rooms/${this.roomId()}?played=true`);
+    this.reopenWait = setTimeout(() => this.goToTable(), REOPEN_WAIT_MS);
   }
 
-  /** True once the room is waiting again, or when asking is pointless (seat gone, offline). */
-  private async roomReopened(): Promise<boolean> {
-    if (!this.credentials) return true;
-    try {
-      return (await this.api.lobby(this.roomId(), this.credentials)).status === 'waiting';
-    } catch {
-      return true; // the waiting room explains a missing room or a lost connection
-    }
-  }
-
-  /** Still disconnected: if the seat no longer exists, stop and explain instead of waiting. */
-  private async checkSeat() {
-    if (!this.credentials) return;
-    try {
-      await this.api.lobby(this.roomId(), this.credentials);
-    } catch (e) {
-      if (e instanceof ApiError && e.code === 'not_found') {
-        this.session()?.stop();
-        this.seatStore.forget(this.roomId());
-        this.state.set('gone');
-        this.errors.report(e);
-      }
-      // anything else (e.g. offline): keep showing "Reconnecting…" while the socket retries
-    }
+  private goToTable() {
+    clearTimeout(this.reopenWait);
+    this.reopenWait = undefined;
+    void this.router.navigateByUrl(`/rooms/${this.roomId()}?played=true`);
   }
 }
