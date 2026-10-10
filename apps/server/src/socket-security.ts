@@ -37,6 +37,9 @@ interface SocketServer {
  * - `sync` only from a seated player of an existing match. Stock boardgame.io would otherwise
  *   create a new match for any unknown match ID (filling the database) and send game state to
  *   anyone without a seat.
+ * - `update` only with `MAKE_MOVE` actions: boardgame.io's server reducer also applies client-side
+ *   action types (UPDATE/SYNC/RESET replace the whole state, PATCH edits it, GAME_EVENT can call
+ *   endGame), so letting them through would let a seated player forge the game state or result.
  * - `update` / `chat` only for the match and seat this socket has synced into. Stock
  *   boardgame.io creates an in-memory queue per match ID it sees in `update` and reads the
  *   database for every message, so unchecked messages would grow memory and DB load.
@@ -67,13 +70,16 @@ export function guardSockets(io: SocketServer, gameNames: string[], db: Async) {
           }
           case 'update': {
             const [, action, , matchID, playerID] = packet;
-            const actingAs = (action as { payload?: { playerID?: unknown } } | undefined)?.payload
-              ?.playerID;
+            const { type, payload } = (action ?? {}) as {
+              type?: unknown;
+              payload?: { playerID?: unknown };
+            };
             if (
               seat &&
+              type === 'MAKE_MOVE' &&
               matchID === seat.matchID &&
               playerID === seat.playerID &&
-              actingAs === seat.playerID
+              payload?.playerID === seat.playerID
             ) {
               next();
             }

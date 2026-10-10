@@ -233,6 +233,68 @@ describe('socket security', () => {
     expect(db.fetchCount).toBe(0);
   });
 
+  it.each([
+    ['UPDATE (replace the whole state)', 'UPDATE'],
+    ['SYNC (replace the whole state)', 'SYNC'],
+    ['RESET (replace the whole state)', 'RESET'],
+    ['PATCH (patch the state)', 'PATCH'],
+    ['GAME_EVENT endGame (declare a winner)', 'GAME_EVENT'],
+    ['UNDO', 'UNDO'],
+    ['an unknown action type', 'SOMETHING_ELSE'],
+  ])('a seated player cannot bypass the rules with %s', async (_case, type) => {
+    const { url, db } = await start();
+    const { matchID, seats } = await createSeatedMatch(db, ['Alice', 'Bob']);
+    const alice = seats[0]!;
+    const { socket, received } = await attacker(url);
+    socket.emit('sync', matchID, '0', alice.credentials, 2);
+    await eventually(async () => expect(received).toContain('sync'));
+    const { state } = await db.fetch(matchID, { state: true });
+
+    // Valid seat, valid credentials, Alice's turn, correct stateID: only the action type is forged.
+    const forged = {
+      ...state,
+      G: { cells: Array(9).fill('0') },
+      ctx: { ...state.ctx, gameover: { winner: '0' } },
+    };
+    const payload = { playerID: '0', credentials: alice.credentials };
+    const action =
+      type === 'PATCH'
+        ? {
+            type,
+            patch: [{ op: 'replace', path: '/ctx/gameover', value: { winner: '0' } }],
+            payload,
+          }
+        : type === 'GAME_EVENT'
+          ? { type, payload: { ...payload, type: 'endGame', args: [{ winner: '0' }] } }
+          : { type, state: forged, payload };
+    socket.emit('update', action, state._stateID, matchID, '0');
+    await sleep(300);
+
+    const after = await db.fetch(matchID, { state: true, metadata: true });
+    expect(after.state.G.cells).toEqual(Array(9).fill(null));
+    expect(after.state.ctx.gameover).toBeUndefined();
+    expect(after.metadata.gameover).toBeUndefined();
+  });
+
+  it('still accepts normal moves from the seated player', async () => {
+    const { url, db } = await start();
+    const { matchID, seats } = await createSeatedMatch(db, ['Alice', 'Bob']);
+    const alice = seats[0]!;
+    const { socket, received } = await attacker(url);
+    socket.emit('sync', matchID, '0', alice.credentials, 2);
+    await eventually(async () => expect(received).toContain('sync'));
+    socket.emit(
+      'update',
+      makeMoveAction('clickCell', [4], '0', alice.credentials),
+      0,
+      matchID,
+      '0',
+    );
+    await eventually(async () =>
+      expect((await db.fetch(matchID, { state: true })).state.G.cells[4]).toBe('0'),
+    );
+  });
+
   it('only lets a seated socket act in its own match and seat', async () => {
     const { url, db } = await start();
     const { matchID: matchA, seats: seatsA } = await createSeatedMatch(db, ['Alice', 'Bob']);
