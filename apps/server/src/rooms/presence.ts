@@ -83,6 +83,11 @@ export class RoomPresence {
       .map(([seatKey]) => seatKey);
   }
 
+  /** Every tracked seat of the room. */
+  seatKeys(roomId: string): string[] {
+    return [...(this.rooms.get(roomId)?.keys() ?? [])];
+  }
+
   socketCount(roomId: string, seatKey: string): number {
     return this.seat(roomId, seatKey, false)?.sockets.size ?? 0;
   }

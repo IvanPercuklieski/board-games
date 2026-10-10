@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { extname, join } from 'node:path';
 import { gameRegistry } from '@board-table/games';
+import { PRESENCE } from '@board-table/shared';
 import { Server } from 'boardgame.io/server';
 import type { Middleware } from 'koa';
 import serve from 'koa-static';
@@ -11,7 +12,9 @@ import { createSql } from './db';
 import { apiMiddleware } from './http/api';
 import { RateLimiter } from './http/rate-limiter';
 import { PostgresRoomsRepository } from './rooms/postgres-rooms-repository';
+import { RoomPresence } from './rooms/presence';
 import { RoomLifecycle } from './rooms/room-lifecycle';
+import { serveRoomSockets } from './rooms/room-sockets';
 import { SeatEvents } from './rooms/seat-events';
 import { createSocketTransport } from './socket-transport';
 import type { RoomsRepository } from './rooms/rooms-repository';
@@ -26,8 +29,23 @@ const MAX_SOCKET_MESSAGE_BYTES = 64 * 1024;
 export interface RunningApp {
   url: string;
   db: GameStorage;
+  /** Tracked presence entries (tests check nothing is left behind). */
+  presenceSize(): number;
   stop(): Promise<void>;
 }
+
+/** Presence timings (PRESENCE in production; tests use short ones). */
+export interface PresenceTimings {
+  graceMs: number;
+  startupGraceMs: number;
+  freeSeatAfterMs: number;
+}
+
+const DEFAULT_PRESENCE: PresenceTimings = {
+  graceMs: PRESENCE.disconnectGraceMs,
+  startupGraceMs: PRESENCE.startupGraceMs,
+  freeSeatAfterMs: PRESENCE.freeSeatAfterMs,
+};
 
 /** What the app needs from the outside world; tests pass in-memory versions. */
 export interface AppDeps {
@@ -58,7 +76,15 @@ function productionDeps(config: ServerConfig): AppDeps & { close(): Promise<void
  * boardgame.io's built-in lobby REST API (create/list/join/leave matches), which is public
  * by design. Rooms and seats are managed by our own code instead (see rooms/).
  */
-export function createApp({ config, deps }: { config: ServerConfig; deps?: AppDeps }) {
+export function createApp({
+  config,
+  deps,
+  presenceTimings = DEFAULT_PRESENCE,
+}: {
+  config: ServerConfig;
+  deps?: AppDeps;
+  presenceTimings?: PresenceTimings;
+}) {
   const { storage, repo, verifier, close } = deps
     ? { ...deps, close: async () => {} }
     : productionDeps(config);
@@ -91,11 +117,32 @@ export function createApp({ config, deps }: { config: ServerConfig; deps?: AppDe
       limiter.start();
       lifecycle.start();
 
+      // Presence from the live room connections drives "away", seat freeing and host handover.
+      const log = (...args: unknown[]) => console.error(...args);
+      const presence: RoomPresence = new RoomPresence({
+        ...presenceTimings,
+        onChange: ({ roomId, seatKey, kind }) => {
+          const task =
+            kind === 'away'
+              ? service.seatAway(roomId, seatKey)
+              : kind === 'expired'
+                ? service.seatExpired(roomId, seatKey)
+                : Promise.resolve(service.seatBack(roomId));
+          task.catch((e: unknown) => log('Presence update failed:', e instanceof Error ? e.message : e));
+        },
+      });
+      const service = new RoomsService({
+        repo,
+        publicOrigin: config.publicOrigin,
+        seatEvents,
+        presence,
+      });
+
       server.app.use(securityHeaders(config));
       server.app.use(healthCheck);
       server.app.use(
         apiMiddleware({
-          service: new RoomsService({ repo, publicOrigin: config.publicOrigin, seatEvents }),
+          service,
           verifier,
           limiter,
           publicConfig: {
@@ -114,7 +161,10 @@ export function createApp({ config, deps }: { config: ServerConfig; deps?: AppDe
       const { port } = appServer.address() as AddressInfo;
       // koa-socket-2 (used by boardgame.io) exposes the socket.io server as app._io
       const io = (
-        server.app as unknown as { _io: Parameters<typeof guardSockets>[0] & { close(): void } }
+        server.app as unknown as {
+          _io: Parameters<typeof guardSockets>[0] &
+            Parameters<typeof serveRoomSockets>[0]['io'] & { close(): void };
+        }
       )._io;
       const stopGuard = guardSockets(
         io,
@@ -122,11 +172,24 @@ export function createApp({ config, deps }: { config: ServerConfig; deps?: AppDe
         storage,
         seatEvents,
       );
+      const stopRoomSockets = serveRoomSockets({
+        io,
+        service,
+        repo,
+        presence,
+        seatEvents,
+        limiter,
+        trustProxy: config.trustProxy,
+        log,
+      });
 
       return {
         url: `http://localhost:${port}`,
         db: storage,
+        presenceSize: () => presence.size(),
         async stop() {
+          stopRoomSockets();
+          presence.stop();
           stopGuard();
           io.close();
           appServer.closeAllConnections();

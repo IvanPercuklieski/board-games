@@ -709,3 +709,46 @@ describe('rate limiting', () => {
     expect((await from('198.51.100.1')).status).toBe(200);
   });
 });
+
+describe('joining with an account and leaving', () => {
+  it('seats a signed-in player with their account; a bad login token is refused', async () => {
+    const c = await setup();
+    const room = await createRoom(c, c.aliceToken);
+    const bob = randomUUID();
+    c.repo.addProfile(bob, 'Bob');
+
+    const bad = await api(c.url, `/api/rooms/${room.roomId}/join`, {
+      method: 'POST',
+      headers: bearer('not-a-token'),
+      json: { token: room.token, name: 'Bob' },
+    });
+    await expectError(bad, 401, 'unauthorized');
+    expect(await c.repo.listSeats(room.roomId)).toHaveLength(1);
+
+    const res = await api(c.url, `/api/rooms/${room.roomId}/join`, {
+      method: 'POST',
+      headers: bearer(await c.tokenFor(bob)),
+      json: { token: room.token, name: 'Bob' },
+    });
+    expect(res.status).toBe(201);
+    expect((await c.repo.listSeats(room.roomId))[1]).toMatchObject({ userId: bob });
+  });
+
+  it('leave needs the seat credentials of that room', async () => {
+    const c = await setup();
+    const room = await createRoom(c, c.aliceToken);
+    const other = await createRoom(c, c.aliceToken);
+    const bob = await join(c, room, 'Bob');
+    const leave = (id: string, headers: Record<string, string> = {}) =>
+      api(c.url, `/api/rooms/${id}/leave`, { method: 'POST', headers });
+
+    await expectError(await leave(room.roomId), 401, 'unauthorized');
+    await expectError(await leave(room.roomId, seatHeader(newSecret())), 404, 'not_found');
+    await expectError(await leave(other.roomId, seatHeader(bob.credentials)), 404, 'not_found');
+    await expectError(await leave('bad-id', seatHeader(bob.credentials)), 404, 'not_found');
+    expect(await c.repo.listSeats(room.roomId)).toHaveLength(2);
+
+    expect((await leave(room.roomId, seatHeader(bob.credentials))).status).toBe(204);
+    expect(await c.repo.listSeats(room.roomId)).toHaveLength(1);
+  });
+});

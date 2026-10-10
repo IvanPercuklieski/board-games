@@ -100,6 +100,17 @@ function buildRoutes({ service, verifier, limiter, publicConfig }: ApiDeps): Rou
     }
   }
 
+  /** The signed-in user, if the request has a login token; a bad token is rejected. */
+  async function optionalUser(ctx: Context): Promise<string | undefined> {
+    return ctx.get('authorization') ? requireHost(ctx) : undefined;
+  }
+
+  function seatCredentials(ctx: Context): string {
+    const credentials = secretSchema.safeParse(ctx.get(SEAT_CREDENTIALS_HEADER));
+    if (!credentials.success) throw new ApiFailure('unauthorized');
+    return credentials.data;
+  }
+
   const guestLimit = (ctx: Context) => rateLimit(limiter, `guest:${ctx.ip}`, LIMITS.guestPerIp);
 
   return [
@@ -147,14 +158,17 @@ function buildRoutes({ service, verifier, limiter, publicConfig }: ApiDeps): Rou
     }),
     route('POST', `/api/rooms/${ROOM}/join`, async (ctx, [id]) => {
       guestLimit(ctx);
+      const userId = await optionalUser(ctx);
       const body = await readJson(ctx, joinRequestSchema);
       ctx.status = 201;
-      ctx.body = await service.join(roomId(id), body);
+      ctx.body = await service.join(roomId(id), body, userId);
     }),
     route('GET', `/api/rooms/${ROOM}/lobby`, async (ctx, [id]) => {
-      const credentials = secretSchema.safeParse(ctx.get(SEAT_CREDENTIALS_HEADER));
-      if (!credentials.success) throw new ApiFailure('unauthorized');
-      ctx.body = await service.lobby(roomId(id), credentials.data);
+      ctx.body = await service.lobby(roomId(id), seatCredentials(ctx));
+    }),
+    route('POST', `/api/rooms/${ROOM}/leave`, async (ctx, [id]) => {
+      await service.leave(roomId(id), seatCredentials(ctx));
+      ctx.status = 204;
     }),
   ];
 }

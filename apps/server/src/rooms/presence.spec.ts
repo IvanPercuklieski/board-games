@@ -145,6 +145,13 @@ describe('RoomPresence', () => {
     expect(presence.expiredSeats('r2')).toEqual([]);
   });
 
+  it('lists the tracked seats of a room', () => {
+    presence.track('r1', 'seat-a');
+    presence.connected('r1', 'seat-b', 's1');
+    expect(presence.seatKeys('r1')).toEqual(['seat-a', 'seat-b']);
+    expect(presence.seatKeys('r2')).toEqual([]);
+  });
+
   it('isAway is false for seats it does not know', () => {
     expect(presence.isAway('r1', 'unknown')).toBe(false);
   });

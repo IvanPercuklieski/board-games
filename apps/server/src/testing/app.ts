@@ -1,4 +1,4 @@
-import { createApp, type RunningApp } from '../app';
+import { createApp, type PresenceTimings, type RunningApp } from '../app';
 import type { ServerConfig } from '../config';
 import { createTestAuth, TEST_SUPABASE_URL } from './auth';
 import { MemoryRoomsRepository } from './memory-rooms-repository';
@@ -20,13 +20,17 @@ export function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig 
 }
 
 /** Starts the real app with in-memory storage/repository and a local test login key. */
-export async function startTestApp(overrides: Partial<ServerConfig> = {}) {
+export async function startTestApp(
+  overrides: Partial<ServerConfig> = {},
+  { presence }: { presence?: PresenceTimings } = {},
+) {
   const storage = new MemoryStorage();
   const repo = new MemoryRoomsRepository(storage);
   const auth = await createTestAuth();
   const app: RunningApp = await createApp({
     config: testConfig(overrides),
     deps: { storage, repo, verifier: auth.verifier },
+    ...(presence && { presenceTimings: presence }),
   }).start();
   return { app, url: app.url, storage, repo, tokenFor: auth.tokenFor };
 }

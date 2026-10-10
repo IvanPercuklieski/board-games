@@ -28,8 +28,9 @@ interface RegisteredClient {
  */
 export function createSocketTransport(db: StorageAPI.Async, maxHttpBufferSize: number): SocketIO {
   const transport = new SocketIO({
-    // only the option we set; boardgame.io types require the full socket.io options object
-    socketOpts: { maxHttpBufferSize } as never,
+    // only the options we set; boardgame.io types require the full socket.io options object.
+    // connectTimeout: a connection that never joins a namespace is dropped after 10 s.
+    socketOpts: { maxHttpBufferSize, connectTimeout: 10_000 } as never,
   });
   // addClient/getMatchQueue are private in boardgame.io's types; the transport calls addClient
   // via `this`, so an own property wraps it. The queue is created while the socket is
