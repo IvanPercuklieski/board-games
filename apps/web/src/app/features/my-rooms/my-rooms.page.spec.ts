@@ -74,6 +74,13 @@ describe('MyRoomsPage', () => {
     expect(within(list).getAllByRole('listitem')).toHaveLength(1);
   });
 
+  it('loads the rooms fresh on every visit (a room closed elsewhere is gone)', async () => {
+    const { api } = await setup(rooms);
+    await screen.findByRole('list', { name: 'Your rooms' });
+    TestBed.createComponent(MyRoomsPage).detectChanges(); // the next visit
+    await vi.waitFor(() => expect(api.listRooms).toHaveBeenCalledTimes(2));
+  });
+
   it('keeps the room when the host cancels', async () => {
     const { api } = await setup(rooms, false);
     const list = await screen.findByRole('list', { name: 'Your rooms' });

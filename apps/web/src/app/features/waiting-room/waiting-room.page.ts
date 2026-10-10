@@ -518,13 +518,15 @@ export class WaitingRoomPage implements OnInit {
       tone: 'danger',
     });
     if (!ok) return;
+    this.poller.stop(); // before the request, so no lobby poll runs while the room is deleted
     try {
       await this.api.closeRoom(this.roomId());
-      this.poller.stop();
-      this.seatStore.forget(this.roomId());
-      await this.router.navigateByUrl('/rooms');
     } catch {
       this.toasts.show({ message: 'The room couldn’t be closed. Try again.', tone: 'danger' });
+      this.poller.start();
+      return;
     }
+    this.seatStore.forget(this.roomId());
+    await this.router.navigateByUrl('/rooms');
   }
 }

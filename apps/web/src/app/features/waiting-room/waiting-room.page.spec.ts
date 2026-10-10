@@ -174,6 +174,37 @@ describe('WaitingRoomPage', () => {
       expect(navigate).toHaveBeenCalledWith('/rooms');
     });
 
+    it('stops polling before closing, so no lobby poll races the close', async () => {
+      const { api } = await setup();
+      await screen.findByRole('heading', { level: 1 });
+      let pollsDuringClose = -1;
+      api.closeRoom.mockImplementation(async () => {
+        const before = api.lobby.mock.calls.length;
+        document.dispatchEvent(new Event('visibilitychange')); // would poll right away if running
+        pollsDuringClose = api.lobby.mock.calls.length - before;
+      });
+      await userEvent.click(screen.getByRole('button', { name: /Close room/ }));
+      expect(api.closeRoom).toHaveBeenCalled();
+      expect(pollsDuringClose).toBe(0);
+    });
+
+    it('keeps the room and polling when closing fails', async () => {
+      const { api, navigate } = await setup();
+      await screen.findByRole('heading', { level: 1 });
+      api.closeRoom.mockRejectedValue(new ApiError('network', 0));
+      await userEvent.click(screen.getByRole('button', { name: /Close room/ }));
+      expect(navigate).not.toHaveBeenCalledWith('/rooms');
+      expect(TestBed.inject(SeatStore).seat(roomId)).toBeDefined();
+      expect(
+        TestBed.inject(ToastService)
+          .toasts()
+          .map((t) => t.message),
+      ).toContain('The room couldn’t be closed. Try again.');
+      const calls = api.lobby.mock.calls.length;
+      document.dispatchEvent(new Event('visibilitychange'));
+      await vi.waitFor(() => expect(api.lobby.mock.calls.length).toBeGreaterThan(calls));
+    });
+
     it('reclaims the host seat when the room was created on another device', async () => {
       const { api } = await setup({ seat: null });
       expect(await screen.findByRole('heading', { level: 1, name: 'Tic-tac-toe' })).toBeTruthy();
