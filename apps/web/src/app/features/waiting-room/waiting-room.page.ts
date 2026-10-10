@@ -10,6 +10,7 @@ import {
   inject,
   input,
   signal,
+  untracked,
   type OnInit,
 } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
@@ -34,7 +35,7 @@ import { SeatTokenComponent } from '../../ui/seat-token/seat-token.component';
 import { ToastService } from '../../ui/toast/toast.service';
 import { openChangeGameDialog } from './change-game-dialog.component';
 
-type State = 'loading' | 'ready' | 'no-seat' | 'gone' | 'offline';
+type State = 'loading' | 'ready' | 'no-seat' | 'gone' | 'left' | 'offline';
 /** Set while we end our own seat or room, so the server's "closed" isn't shown as an error. */
 type Ending = 'leaving' | 'closing';
 
@@ -77,6 +78,13 @@ type Ending = 'leaving' | 'closing';
           >
             <a bt-button variant="secondary" routerLink="/">Go to the games</a>
           </bt-empty-state>
+        }
+        @case ('left') {
+          <bt-empty-state
+            icon="sign-out"
+            title="You left the table"
+            description="Your seat is free for someone else. Open the invite link again to come back while a seat is free."
+          />
         }
         @case ('offline') {
           <bt-empty-state
@@ -482,7 +490,11 @@ export class WaitingRoomPage implements OnInit {
   /** Why Start is disabled, if it is. */
   protected readonly startHint = computed(() => {
     const away = this.awayNames();
-    if (away.length > 0) return `Waiting for ${listNames(away)} to come back`;
+    if (away.length > 0) {
+      // the host can also free the seat (the x next to the name)
+      const seats = away.length === 1 ? 'their seat' : 'their seats';
+      return `Waiting for ${listNames(away)} to come back, or free ${seats}`;
+    }
     if ((this.lobby()?.seats.length ?? 0) < this.minPlayers()) {
       return `Waiting for at least ${this.minPlayers()} players`;
     }
@@ -514,8 +526,10 @@ export class WaitingRoomPage implements OnInit {
     // The room or our seat is gone. When we ended it ourselves, that is not news.
     effect(() => {
       if (!this.closed()) return;
-      this.seatStore.forget(this.roomId());
-      if (this.ending() === undefined) this.errors.report(new ApiError('not_found', 404));
+      untracked(() => {
+        this.seatStore.forget(this.roomId());
+        if (this.ending() === undefined) this.errors.report(new ApiError('not_found', 404));
+      });
     });
 
     // The room was handed to us (the host left or went away).
@@ -524,7 +538,7 @@ export class WaitingRoomPage implements OnInit {
       const lobby = this.lobby();
       if (!lobby) return;
       if (wasHost === false && lobby.you.isHost) {
-        this.toasts.show({ message: 'You’re the host now', tone: 'success' });
+        untracked(() => this.toasts.show({ message: 'You’re the host now', tone: 'success' }));
       }
       wasHost = lobby.you.isHost;
     });
@@ -636,7 +650,9 @@ export class WaitingRoomPage implements OnInit {
       return;
     }
     this.seatStore.forget(this.roomId());
-    await this.router.navigateByUrl(host ? '/rooms' : '/');
+    // Hosts go back to their rooms; guests have no other page here, so the page says goodbye.
+    if (host) await this.router.navigateByUrl('/rooms');
+    else this.setupState.set('left');
   }
 
   protected async close() {

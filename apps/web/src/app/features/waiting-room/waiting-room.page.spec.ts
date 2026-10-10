@@ -137,7 +137,9 @@ describe('WaitingRoomPage', () => {
       );
       expect(api.leave).toHaveBeenCalledWith(roomId, guestSecret);
       connection.closed.set(true); // the server closes our connection after we left
-      await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/'));
+      // guests have no other page to go to (the games are for hosts): say goodbye here
+      expect(await screen.findByRole('heading', { name: 'You left the table' })).toBeTruthy();
+      expect(navigate).not.toHaveBeenCalled();
       expect(TestBed.inject(SeatStore).seat(roomId)).toBeUndefined();
       expect(toastMessages()).toEqual([]); // leaving is not an error
     });
@@ -210,7 +212,7 @@ describe('WaitingRoomPage', () => {
       const seats = screen.getByRole('list', { name: 'Seats' });
       expect(within(seats).getByRole('img', { name: 'Seat 2: Mara (away)' })).toBeTruthy();
       expect(within(seats).getByText('Away')).toBeTruthy();
-      expect(screen.getByText('Waiting for Mara to come back')).toBeTruthy();
+      expect(screen.getByText('Waiting for Mara to come back, or free their seat')).toBeTruthy();
     });
 
     it('starts the game and moves to the table once the server says so', async () => {
@@ -363,6 +365,7 @@ describe('WaitingRoomPage', () => {
   });
 
   it('explains when the room is gone or the seat was given away', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const { connection } = await setup();
     await screen.findByRole('heading', { level: 1 });
     connection.closed.set(true);
@@ -371,6 +374,7 @@ describe('WaitingRoomPage', () => {
     ).toBeTruthy();
     expect(TestBed.inject(SeatStore).seat(roomId)).toBeUndefined();
     expect(toastMessages()).toEqual(['This table no longer exists, or the link stopped working.']);
+    expect(console.error).toHaveBeenCalledTimes(1); // reported once
   });
 
   it('closes the connection when leaving the page', async () => {

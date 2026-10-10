@@ -8,6 +8,7 @@ import {
   inject,
   input,
   signal,
+  untracked,
   type OnInit,
   type Type,
 } from '@angular/core';
@@ -229,14 +230,18 @@ export class PlayPage implements OnInit {
     // The room says the table is gone for us (seat freed or reissued, room closed).
     effect(() => {
       if (!this.connection()?.closed()) return;
-      this.session()?.stop();
-      this.seatStore.forget(this.roomId());
-      this.state.set('gone');
-      this.errors.report(new ApiError('not_found', 404));
+      untracked(() => {
+        this.session()?.stop();
+        this.seatStore.forget(this.roomId());
+        this.state.set('gone');
+        this.errors.report(new ApiError('not_found', 404));
+      });
     });
     // "Back to the table" goes as soon as the room is open again (see backToTable).
     effect(() => {
-      if (this.leaving() && this.connection()?.lobby()?.status === 'waiting') this.goToTable();
+      if (this.leaving() && this.connection()?.lobby()?.status === 'waiting') {
+        untracked(() => this.goToTable());
+      }
     });
   }
 

@@ -184,6 +184,7 @@ describe('PlayPage', () => {
   });
 
   it('stops when the room says the seat was given away or the table closed', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const { sessions, connections } = await setup();
     await screen.findByText('Stub board for player 1');
     connections[0]!.closed.set(true);
@@ -197,6 +198,7 @@ describe('PlayPage', () => {
         .toasts()
         .map((t) => t.message),
     ).toEqual(['This table no longer exists, or the link stopped working.']);
+    expect(console.error).toHaveBeenCalledTimes(1); // reported once
     TestBed.inject(ToastService).clear();
   });
 
