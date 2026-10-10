@@ -1,0 +1,33 @@
+# Render Blueprint: one free web service that serves the Angular app, the API and websockets.
+# Free plan only: it sleeps after 15 min without traffic and never scales or bills by usage.
+# Secrets are NOT in this file: set them in the Render dashboard (sync: false = asked on first deploy).
+services:
+  - type: web
+    name: board-table
+    runtime: node
+    plan: free
+    # Closest Render region to the Supabase project (EU).
+    region: frankfurt
+    # Dev dependencies (Angular CLI, esbuild) are needed to build, so NODE_ENV is not set here.
+    buildCommand: npm ci && npm run build
+    # Started from the repo root so WEB_DIST_DIR resolves.
+    startCommand: node apps/server/dist/main.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: '22'
+      # Render puts a proxy in front; the client IP for rate limits comes from X-Forwarded-For.
+      - key: TRUST_PROXY
+        value: 'true'
+      - key: WEB_DIST_DIR
+        value: apps/web/dist/web/browser
+      # e.g. https://board-table.onrender.com (the service URL, no trailing slash)
+      - key: PUBLIC_ORIGIN
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      # Session pooler connection string (server only, never exposed)
+      - key: DATABASE_URL
+        sync: false
