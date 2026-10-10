@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createApp, type RunningApp } from './app';
-import { claimSeat, createMatch } from './matches';
+import { createSeatedMatch } from './testing/matches';
 import { MemoryStorage } from './testing/memory-storage';
 import {
   connectPlayer,
@@ -111,9 +111,9 @@ describe('HTTP', () => {
 describe('multiplayer over socket.io', () => {
   it('lets two seated players play tic-tac-toe to a win', async () => {
     const { url, db } = await start();
-    const matchID = await createMatch(db, 'tictactoe');
-    const alice = connectPlayer(url, matchID, await claimSeat(db, matchID, 'Alice'));
-    const bob = connectPlayer(url, matchID, await claimSeat(db, matchID, 'Bob'));
+    const { matchID, seats } = await createSeatedMatch(db, ['Alice', 'Bob']);
+    const alice = connectPlayer(url, matchID, seats[0]!);
+    const bob = connectPlayer(url, matchID, seats[1]!);
     try {
       for (const [player, cell] of [
         [alice, 0],
@@ -160,8 +160,7 @@ describe('socket security', () => {
 
   it('sends no game state to spectators (no seat)', async () => {
     const { url, db } = await start();
-    const matchID = await createMatch(db, 'tictactoe');
-    await claimSeat(db, matchID, 'Alice');
+    const { matchID } = await createSeatedMatch(db, ['Alice', null]);
     const { socket, received } = await attacker(url);
     socket.emit('sync', matchID, null, undefined, 2);
     await sleep(300);
@@ -170,8 +169,7 @@ describe('socket security', () => {
 
   it('sends no game state for wrong credentials', async () => {
     const { url, db } = await start();
-    const matchID = await createMatch(db, 'tictactoe');
-    await claimSeat(db, matchID, 'Alice');
+    const { matchID } = await createSeatedMatch(db, ['Alice', null]);
     const { socket, received } = await attacker(url);
     socket.emit('sync', matchID, '0', 'wrong', 2);
     await sleep(300);
@@ -180,7 +178,7 @@ describe('socket security', () => {
 
   it('requires credentials even before any seat is claimed', async () => {
     const { url, db } = await start();
-    const matchID = await createMatch(db, 'tictactoe');
+    const { matchID } = await createSeatedMatch(db, [null, null]);
     const { socket, received } = await attacker(url);
     socket.emit('sync', matchID, '0', undefined, 2);
     socket.emit('update', makeMoveAction('clickCell', [4], '0'), 0, matchID, '0');
@@ -191,8 +189,8 @@ describe('socket security', () => {
 
   it('rejects moves with wrong credentials or for an unclaimed seat', async () => {
     const { url, db } = await start();
-    const matchID = await createMatch(db, 'tictactoe');
-    const alice = await claimSeat(db, matchID, 'Alice');
+    const { matchID, seats } = await createSeatedMatch(db, ['Alice', null]);
+    const alice = seats[0]!;
     const { socket } = await attacker(url);
     socket.emit('update', makeMoveAction('clickCell', [4], '0', 'wrong'), 0, matchID, '0');
     socket.emit('update', makeMoveAction('clickCell', [5], '1'), 0, matchID, '1');
@@ -221,11 +219,9 @@ describe('socket security', () => {
 
   it('only lets a seated socket act in its own match and seat', async () => {
     const { url, db } = await start();
-    const matchA = await createMatch(db, 'tictactoe');
-    const matchB = await createMatch(db, 'tictactoe');
-    const aliceA = await claimSeat(db, matchA, 'Alice');
-    await claimSeat(db, matchA, 'Bob');
-    await claimSeat(db, matchB, 'Carol');
+    const { matchID: matchA, seats: seatsA } = await createSeatedMatch(db, ['Alice', 'Bob']);
+    const { matchID: matchB } = await createSeatedMatch(db, ['Carol', null]);
+    const aliceA = seatsA[0]!;
     const { socket, received } = await attacker(url);
     socket.emit('sync', matchA, '0', aliceA.credentials, 2);
     await eventually(async () => expect(received).toContain('sync'));
@@ -252,8 +248,8 @@ describe('socket security', () => {
 
   it('still accepts the real player after attacks', async () => {
     const { url, db } = await start();
-    const matchID = await createMatch(db, 'tictactoe');
-    const alice = connectPlayer(url, matchID, await claimSeat(db, matchID, 'Alice'));
+    const { matchID, seats } = await createSeatedMatch(db, ['Alice', null]);
+    const alice = connectPlayer(url, matchID, seats[0]!);
     const { socket } = await attacker(url);
     socket.emit('update', makeMoveAction('clickCell', [4], '0', 'wrong'), 0, matchID, '0');
     try {

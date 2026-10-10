@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApp } from './app';
-import { claimSeat, createMatch } from './matches';
 import { PostgresStorage } from './storage/postgres-storage';
 import { devDatabaseUrl } from './testing/dev-env';
+import { createSeatedMatch } from './testing/matches';
 import { connectPlayer, eventually, playMove, waitForState } from './testing/players';
 
 const config = {
@@ -24,10 +24,10 @@ describe('server with Postgres storage (board-games-dev)', () => {
   it('keeps a game in the database across a server restart', async () => {
     // First server: create a match, seat two players, play two moves.
     const first = await createApp({ config }).start();
-    const matchID = await createMatch(first.db, 'tictactoe');
+    const { matchID, seats } = await createSeatedMatch(first.db, ['Alice', 'Bob']);
     matchIDs.push(matchID);
-    const aliceSeat = await claimSeat(first.db, matchID, 'Alice');
-    const bobSeat = await claimSeat(first.db, matchID, 'Bob');
+    const aliceSeat = seats[0]!;
+    const bobSeat = seats[1]!;
 
     const alice = connectPlayer(first.url, matchID, aliceSeat);
     const bob = connectPlayer(first.url, matchID, bobSeat);

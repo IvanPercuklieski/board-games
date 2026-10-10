@@ -1,9 +1,11 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { Server as BgioServerTypes } from 'boardgame.io';
 import type { Async } from 'boardgame.io/internal';
+import { hashSecret } from './secrets';
 
 /**
- * True only if `credentials` are the secret of a claimed seat in this match.
+ * True only if `credentials` are the secret of a claimed seat in this match. Match metadata
+ * stores only the SHA-256 hash of each seat's secret, so the presented secret is hashed first.
  * Unlike boardgame.io's default, this is enforced even when no seat has been claimed yet,
  * and unknown matches (no metadata) are always rejected.
  */
@@ -15,7 +17,7 @@ export function isSeatOwner(
   if (!metadata || typeof playerID !== 'string' || typeof credentials !== 'string') return false;
   const expected = metadata.players[Number(playerID)]?.credentials;
   if (typeof expected !== 'string' || expected.length === 0) return false;
-  const a = Buffer.from(credentials);
+  const a = Buffer.from(hashSecret(credentials));
   const b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b);
 }
