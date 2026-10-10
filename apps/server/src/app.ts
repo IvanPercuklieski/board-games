@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { extname, join } from 'node:path';
 import { gameRegistry } from '@board-table/games';
-import { Server, SocketIO } from 'boardgame.io/server';
+import { Server } from 'boardgame.io/server';
 import type { Middleware } from 'koa';
 import serve from 'koa-static';
 import { createSupabaseAccessTokenVerifier, type AccessTokenVerifier } from './auth/access-token';
@@ -13,6 +13,7 @@ import { RateLimiter } from './http/rate-limiter';
 import { PostgresRoomsRepository } from './rooms/postgres-rooms-repository';
 import { RoomLifecycle } from './rooms/room-lifecycle';
 import { SeatEvents } from './rooms/seat-events';
+import { createSocketTransport } from './socket-transport';
 import type { RoomsRepository } from './rooms/rooms-repository';
 import { RoomsService } from './rooms/rooms-service';
 import { guardSockets, isSeatOwner } from './socket-security';
@@ -74,10 +75,7 @@ export function createApp({ config, deps }: { config: ServerConfig; deps?: AppDe
         games: gameRegistry.map((def) => def.game),
         db: gameStorage,
         origins: [config.publicOrigin],
-        transport: new SocketIO({
-          // only the option we set; boardgame.io types require the full socket.io options object
-          socketOpts: { maxHttpBufferSize: MAX_SOCKET_MESSAGE_BYTES } as never,
-        }),
+        transport: createSocketTransport(storage, MAX_SOCKET_MESSAGE_BYTES),
       });
 
       // Always require a claimed seat's credentials (stock boardgame.io skips the check

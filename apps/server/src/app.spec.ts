@@ -152,6 +152,61 @@ describe('multiplayer over socket.io', () => {
   });
 });
 
+describe('joining while the other player moves', () => {
+  it('a player whose sync is still loading still receives a move made meanwhile', async () => {
+    const { url, db } = await start();
+    const { matchID, seats } = await createSeatedMatch(db, ['Alice', 'Bob']);
+    const alice = connectPlayer(url, matchID, seats[0]!);
+    await waitForState(alice, (s) => s.ctx.currentPlayer === '0');
+
+    // boardgame.io's sync reads the match (with its log), then answers, then registers the
+    // socket for broadcasts. Make that read slow, as with a real database round trip.
+    const fetch = db.fetch.bind(db);
+    vi.spyOn(db, 'fetch').mockImplementation(async (id, opts) => {
+      const result = await fetch(id, opts); // the snapshot is taken now...
+      if (opts.log) await sleep(300); // ...and arrives later
+      return result;
+    });
+    const bob = connectPlayer(url, matchID, seats[1]!);
+    try {
+      await sleep(100); // Bob's sync has read the match and is on its way
+      alice.moves['clickCell']!(0);
+      const seen = await waitForState(bob, (s) => s.G.cells[0] === '0', 3_000);
+      expect(seen.ctx.currentPlayer).toBe('1');
+    } finally {
+      alice.stop();
+      bob.stop();
+    }
+  });
+});
+
+describe('joining while a move is being saved', () => {
+  it('a player who syncs before the move is stored still receives it', async () => {
+    const { url, db } = await start();
+    const { matchID, seats } = await createSeatedMatch(db, ['Alice', 'Bob']);
+    const alice = connectPlayer(url, matchID, seats[0]!);
+    await waitForState(alice, (s) => s.ctx.currentPlayer === '0');
+
+    // boardgame.io broadcasts a move first and stores it afterwards; a sync in between
+    // reads the old state from the database.
+    const setState = db.setState.bind(db);
+    vi.spyOn(db, 'setState').mockImplementation(async (...args) => {
+      await sleep(300);
+      return setState(...args);
+    });
+    alice.moves['clickCell']!(0);
+    await sleep(50); // the move is broadcast, not stored yet
+    const bob = connectPlayer(url, matchID, seats[1]!);
+    try {
+      const seen = await waitForState(bob, (s) => s.G.cells[0] === '0', 3_000);
+      expect(seen.ctx.currentPlayer).toBe('1');
+    } finally {
+      alice.stop();
+      bob.stop();
+    }
+  });
+});
+
 describe('socket security', () => {
   async function attacker(url: string) {
     const a = rawSocket(url);
