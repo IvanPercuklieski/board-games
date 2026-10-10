@@ -115,3 +115,8 @@ textarea {
     scroll-behavior: auto !important;
   }
 }
+
+// Backdrop behind CDK dialogs (warm ink, not black).
+.bt-dialog-backdrop {
+  background: rgb(var(--bt-shadow-color) / 0.45);
+}

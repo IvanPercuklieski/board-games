@@ -30,6 +30,15 @@
   --bt-color-warning-text: #6b4610;
   --bt-color-focus: #2c5a46;
   --bt-shadow-color: 38 31 26;
+  // seat colours (decorative rings around seat tokens)
+  --bt-color-seat-0: #2c5a46;
+  --bt-color-seat-1: #8c2b2b;
+  --bt-color-seat-2: #946210;
+  --bt-color-seat-3: #3f5a7a;
+  --bt-color-seat-4: #6e4a6e;
+  --bt-color-seat-5: #2f6f73;
+  --bt-color-seat-6: #9a4f28;
+  --bt-color-seat-7: #5c6826;
 }
 
 @mixin bt-dark-palette {
@@ -60,6 +69,15 @@
   --bt-color-warning-text: #e8c27e;
   --bt-color-focus: #8fc3a6;
   --bt-shadow-color: 0 0 0;
+  // seat colours, lifted for dark backgrounds
+  --bt-color-seat-0: #7db497;
+  --bt-color-seat-1: #e0877e;
+  --bt-color-seat-2: #e2b25e;
+  --bt-color-seat-3: #8fb0d6;
+  --bt-color-seat-4: #c49ac4;
+  --bt-color-seat-5: #78c2c6;
+  --bt-color-seat-6: #e39a6c;
+  --bt-color-seat-7: #b6c47a;
 }
 
 @mixin bt-static-tokens {

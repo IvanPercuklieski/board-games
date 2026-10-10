@@ -1,0 +1,36 @@
+// Native form controls marked with the btInput directive.
+
+.bt-input {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0 var(--bt-space-3);
+  border: var(--bt-border-width) solid var(--bt-color-border-strong);
+  border-radius: var(--bt-radius-md);
+  background: var(--bt-color-surface-raised);
+  color: var(--bt-color-text);
+  transition: border-color var(--bt-duration-fast) var(--bt-ease-standard);
+
+  &::placeholder {
+    color: var(--bt-color-text-muted);
+  }
+
+  &:focus-visible {
+    border-color: var(--bt-color-focus);
+    border-radius: var(--bt-radius-md);
+  }
+
+  &[aria-invalid='true'] {
+    border-color: var(--bt-color-danger-text);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+textarea.bt-input {
+  min-height: 6rem;
+  padding: var(--bt-space-2) var(--bt-space-3);
+  resize: vertical;
+}

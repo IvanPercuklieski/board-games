@@ -23,6 +23,8 @@ const PAIRS = [
   ['focus', 'bg', 3],
   ['focus', 'surface', 3],
   ['border-strong', 'surface', 3],
+  // seat colour rings must stand out from the surface (non-text UI: 3:1)
+  ...Array.from({ length: 8 }, (_, i) => [`seat-${i}`, 'surface', 3]),
 ];
 
 const css = readFileSync(TOKENS, 'utf8');
@@ -34,7 +36,10 @@ function palette(marker) {
   const end = css.indexOf('}', start);
   const block = css.slice(start, end);
   return Object.fromEntries(
-    [...block.matchAll(/--bt-color-([a-z-]+):\s*(#[0-9a-fA-F]{6})\s*;/g)].map((m) => [m[1], m[2]]),
+    [...block.matchAll(/--bt-color-([a-z0-9-]+):\s*(#[0-9a-fA-F]{6})\s*;/g)].map((m) => [
+      m[1],
+      m[2],
+    ]),
   );
 }
 
