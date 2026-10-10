@@ -10,6 +10,9 @@
     "packages/*"
   ],
   "scripts": {
+    "dev:web": "npm run start -w @board-table/web",
+    "build:web": "npm run build -w @board-table/web",
+    "test:web": "npm run test -w @board-table/web -- --watch=false",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
