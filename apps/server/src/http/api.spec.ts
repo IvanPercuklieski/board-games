@@ -15,7 +15,7 @@ import type { RunningApp } from '../app';
 import { newRoomId, newSecret } from '../secrets';
 import { startTestApp } from '../testing/app';
 import type { MemoryRoomsRepository } from '../testing/memory-rooms-repository';
-import { connectPlayer, playMove, waitForState } from '../testing/players';
+import { connectPlayer, eventually, playMove, waitForState } from '../testing/players';
 
 let running: RunningApp | undefined;
 afterEach(async () => {
@@ -250,6 +250,18 @@ describe('rooms flow', () => {
       expect((await waitForState(bob, (s) => s.ctx.gameover !== undefined)).ctx.gameover).toEqual({
         winner: '0',
       });
+
+      // Game over: the room, its seats and the match are deleted right away.
+      await eventually(async () => expect(await c.repo.findRoom(room.roomId)).toBeUndefined());
+      await expectError(
+        await api(c.url, `/api/rooms/${room.roomId}/lobby`, {
+          headers: seatHeader(bobSeat.credentials),
+        }),
+        404,
+        'not_found',
+      );
+      // ...while the players still have the final board.
+      expect(bob.getState()!.G.cells.slice(0, 3)).toEqual(['0', '0', '0']);
     } finally {
       alice.stop();
       bob.stop();

@@ -11,6 +11,7 @@ import { createSql } from './db';
 import { apiMiddleware } from './http/api';
 import { RateLimiter } from './http/rate-limiter';
 import { PostgresRoomsRepository } from './rooms/postgres-rooms-repository';
+import { RoomLifecycle } from './rooms/room-lifecycle';
 import type { RoomsRepository } from './rooms/rooms-repository';
 import { RoomsService } from './rooms/rooms-service';
 import { guardSockets, isSeatOwner } from './socket-security';
@@ -62,9 +63,14 @@ export function createApp({ config, deps }: { config: ServerConfig; deps?: AppDe
 
   return {
     async start(): Promise<RunningApp> {
+      // boardgame.io writes through the observed storage: moves keep rooms alive, a finished
+      // game deletes its room; stale rooms are swept periodically.
+      const lifecycle = new RoomLifecycle({ repo });
+      const gameStorage = lifecycle.wrap(storage);
+
       const server = Server({
         games: gameRegistry.map((def) => def.game),
-        db: storage,
+        db: gameStorage,
         origins: [config.publicOrigin],
         transport: new SocketIO({
           // only the option we set; boardgame.io types require the full socket.io options object
@@ -83,6 +89,7 @@ export function createApp({ config, deps }: { config: ServerConfig; deps?: AppDe
 
       const limiter = new RateLimiter();
       limiter.start();
+      lifecycle.start();
 
       server.app.use(securityHeaders);
       server.app.use(healthCheck);
@@ -123,6 +130,7 @@ export function createApp({ config, deps }: { config: ServerConfig; deps?: AppDe
           appServer.closeAllConnections();
           await new Promise<void>((resolve) => appServer.close(() => resolve()));
           limiter.stop();
+          lifecycle.stop();
           await close();
         },
       };

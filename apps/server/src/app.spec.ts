@@ -116,8 +116,11 @@ describe('multiplayer over socket.io', () => {
 
       const final = await waitForState(bob, (s) => s.ctx.gameover !== undefined);
       expect(final.ctx.gameover).toEqual({ winner: '0' });
-      const stored = await db.fetch(matchID, { state: true });
-      expect(stored.state.G.cells.slice(0, 5)).toEqual(['0', '0', '0', '1', '1']);
+      expect(final.G.cells.slice(0, 5)).toEqual(['0', '0', '0', '1', '1']);
+      // Nothing is kept after a finished game (CLAUDE.md "Data retention").
+      await eventually(async () =>
+        expect((await db.fetch(matchID, { state: true })).state).toBeUndefined(),
+      );
     } finally {
       alice.stop();
       bob.stop();
