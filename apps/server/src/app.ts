@@ -12,6 +12,7 @@ import { apiMiddleware } from './http/api';
 import { RateLimiter } from './http/rate-limiter';
 import { PostgresRoomsRepository } from './rooms/postgres-rooms-repository';
 import { RoomLifecycle } from './rooms/room-lifecycle';
+import { SeatEvents } from './rooms/seat-events';
 import type { RoomsRepository } from './rooms/rooms-repository';
 import { RoomsService } from './rooms/rooms-service';
 import { guardSockets, isSeatOwner } from './socket-security';
@@ -66,6 +67,7 @@ export function createApp({ config, deps }: { config: ServerConfig; deps?: AppDe
       // boardgame.io writes through the observed storage: moves keep rooms alive, a finished
       // game deletes its room; stale rooms are swept periodically.
       const lifecycle = new RoomLifecycle({ repo });
+      const seatEvents = new SeatEvents();
       const gameStorage = lifecycle.wrap(storage);
 
       const server = Server({
@@ -95,7 +97,7 @@ export function createApp({ config, deps }: { config: ServerConfig; deps?: AppDe
       server.app.use(healthCheck);
       server.app.use(
         apiMiddleware({
-          service: new RoomsService({ repo, publicOrigin: config.publicOrigin }),
+          service: new RoomsService({ repo, publicOrigin: config.publicOrigin, seatEvents }),
           verifier,
           limiter,
           publicConfig: {
@@ -116,16 +118,18 @@ export function createApp({ config, deps }: { config: ServerConfig; deps?: AppDe
       const io = (
         server.app as unknown as { _io: Parameters<typeof guardSockets>[0] & { close(): void } }
       )._io;
-      guardSockets(
+      const stopGuard = guardSockets(
         io,
         gameRegistry.map((def) => def.game.name!),
         storage,
+        seatEvents,
       );
 
       return {
         url: `http://localhost:${port}`,
         db: storage,
         async stop() {
+          stopGuard();
           io.close();
           appServer.closeAllConnections();
           await new Promise<void>((resolve) => appServer.close(() => resolve()));

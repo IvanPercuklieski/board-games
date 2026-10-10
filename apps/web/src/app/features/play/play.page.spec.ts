@@ -125,6 +125,38 @@ describe('PlayPage', () => {
     expect(await screen.findByText('Reconnecting…')).toBeTruthy();
   });
 
+  it('notices when the seat was given away while disconnected', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let lobbyCalls = 0;
+    const { sessions } = await setup({
+      lobbyResult: async () => {
+        lobbyCalls++;
+        if (lobbyCalls > 1) throw new ApiError('not_found', 404);
+        return lobby();
+      },
+    });
+    await screen.findByText('Stub board for player 1');
+    sessions[0]!.isConnected.set(false);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(
+      await screen.findByRole('heading', { name: 'This table has been cleared' }),
+    ).toBeTruthy();
+    expect(sessions[0]!.stop).toHaveBeenCalled();
+    expect(TestBed.inject(SeatStore).seat(roomId)).toBeUndefined();
+    vi.useRealTimers();
+  });
+
+  it('keeps waiting for the connection when the seat is still valid', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { sessions } = await setup();
+    await screen.findByText('Stub board for player 1');
+    sessions[0]!.isConnected.set(false);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(screen.getByText('Reconnecting…')).toBeTruthy();
+    expect(sessions[0]!.stop).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
   it('closes the connection when leaving the page', async () => {
     const { sessions, view } = await setup();
     await screen.findByText('Stub board for player 1');

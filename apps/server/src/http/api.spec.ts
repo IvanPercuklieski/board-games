@@ -15,7 +15,14 @@ import type { RunningApp } from '../app';
 import { newRoomId, newSecret } from '../secrets';
 import { startTestApp } from '../testing/app';
 import type { MemoryRoomsRepository } from '../testing/memory-rooms-repository';
-import { connectPlayer, eventually, playMove, waitForState } from '../testing/players';
+import {
+  connectPlayer,
+  eventually,
+  playMove,
+  rawSocket,
+  sleep,
+  waitForState,
+} from '../testing/players';
 
 let running: RunningApp | undefined;
 afterEach(async () => {
@@ -400,6 +407,98 @@ describe('rooms flow', () => {
       404,
       'not_found',
     );
+  });
+});
+
+describe('removed seats lose their live connection', () => {
+  /** A started 2-player game; Mara (seat 1) is connected over a raw socket and receiving updates. */
+  async function startedGameWithMaraWatching(c: Ctx & { aliceToken: string }) {
+    const room = await createRoom(c, c.aliceToken);
+    const mara = await join(c, room, 'Mara');
+    const start = await api(c.url, `/api/rooms/${room.roomId}/start`, {
+      method: 'POST',
+      headers: bearer(c.aliceToken),
+    });
+    expect(start.status).toBe(204);
+    const watcher = rawSocket(c.url);
+    sockets.push(watcher.socket);
+    await watcher.connected;
+    let disconnected = false;
+    watcher.socket.on('disconnect', () => (disconnected = true));
+    watcher.socket.emit('sync', room.roomId, '1', mara.credentials, 2);
+    await eventually(async () => expect(watcher.received).toContain('sync'));
+    return { room, mara, watcher, isDisconnected: () => disconnected };
+  }
+  const sockets: { close(): void }[] = [];
+  afterEach(() => sockets.splice(0).forEach((s) => s.close()));
+
+  it('freeing a seat mid-game disconnects that seat, so it stops receiving the game', async () => {
+    const c = await setup();
+    const { room, watcher, isDisconnected } = await startedGameWithMaraWatching(c);
+
+    const free = await api(c.url, `/api/rooms/${room.roomId}/seats/1`, {
+      method: 'DELETE',
+      headers: bearer(c.aliceToken),
+    });
+    expect(free.status).toBe(204);
+    await eventually(async () => expect(isDisconnected()).toBe(true));
+
+    // the next move is not delivered to the removed player
+    const before = watcher.received.filter((e) => e === 'update').length;
+    const alice = connectPlayer(c.url, room.roomId, {
+      playerID: '0',
+      credentials: room.seat.credentials,
+    });
+    try {
+      await playMove(alice, 4);
+      await sleep(200);
+      expect(watcher.received.filter((e) => e === 'update').length).toBe(before);
+    } finally {
+      alice.stop();
+    }
+  });
+
+  it('reclaiming the host seat disconnects the old device', async () => {
+    const c = await setup();
+    const room = await createRoom(c, c.aliceToken);
+    await join(c, room, 'Mara');
+    await api(c.url, `/api/rooms/${room.roomId}/start`, {
+      method: 'POST',
+      headers: bearer(c.aliceToken),
+    });
+    const oldDevice = rawSocket(c.url);
+    sockets.push(oldDevice.socket);
+    await oldDevice.connected;
+    let disconnected = false;
+    oldDevice.socket.on('disconnect', () => (disconnected = true));
+    oldDevice.socket.emit('sync', room.roomId, '0', room.seat.credentials, 2);
+    await eventually(async () => expect(oldDevice.received).toContain('sync'));
+
+    const res = await api(c.url, `/api/rooms/${room.roomId}/host-seat`, {
+      method: 'POST',
+      headers: bearer(c.aliceToken),
+    });
+    expect(res.status).toBe(200);
+    await eventually(async () => expect(disconnected).toBe(true));
+  });
+
+  it('leaves the other players connected', async () => {
+    const c = await setup();
+    const { room } = await startedGameWithMaraWatching(c);
+    const alice = rawSocket(c.url);
+    sockets.push(alice.socket);
+    await alice.connected;
+    let aliceDisconnected = false;
+    alice.socket.on('disconnect', () => (aliceDisconnected = true));
+    alice.socket.emit('sync', room.roomId, '0', room.seat.credentials, 2);
+    await eventually(async () => expect(alice.received).toContain('sync'));
+
+    await api(c.url, `/api/rooms/${room.roomId}/seats/1`, {
+      method: 'DELETE',
+      headers: bearer(c.aliceToken),
+    });
+    await sleep(300);
+    expect(aliceDisconnected).toBe(false);
   });
 });
 

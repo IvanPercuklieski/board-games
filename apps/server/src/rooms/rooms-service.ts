@@ -16,6 +16,7 @@ import {
 import { buildMatch, MatchError } from '../matches';
 import { hashSecret, newRoomId, newSecret } from '../secrets';
 import type { RoomRecord, RoomsRepository, SeatRecord } from './rooms-repository';
+import { SeatEvents } from './seat-events';
 
 /** An expected, client-facing failure. Routes map `code` to an HTTP status. */
 export class ApiFailure extends Error {
@@ -32,10 +33,20 @@ export class ApiFailure extends Error {
 export class RoomsService {
   private readonly repo: RoomsRepository;
   private readonly publicOrigin: string;
+  private readonly seatEvents: SeatEvents;
 
-  constructor({ repo, publicOrigin }: { repo: RoomsRepository; publicOrigin: string }) {
+  constructor({
+    repo,
+    publicOrigin,
+    seatEvents = new SeatEvents(),
+  }: {
+    repo: RoomsRepository;
+    publicOrigin: string;
+    seatEvents?: SeatEvents;
+  }) {
     this.repo = repo;
     this.publicOrigin = publicOrigin;
+    this.seatEvents = seatEvents;
   }
 
   // --- hosts ---------------------------------------------------------------------
@@ -113,6 +124,8 @@ export class RoomsService {
     await this.hostedRoom(userId, roomId);
     if (seatIndex === 0) throw new ApiFailure('forbidden'); // the host closes the room instead
     if (!(await this.repo.freeSeat(roomId, seatIndex))) throw new ApiFailure('not_found');
+    // In a started game seat index = playerID; the removed player stops receiving the game.
+    this.seatEvents.revoked(roomId, String(seatIndex));
   }
 
   /**
@@ -125,6 +138,7 @@ export class RoomsService {
     if (!(await this.repo.replaceSeatCredentials(roomId, 0, hashSecret(credentials)))) {
       throw new ApiFailure('not_found');
     }
+    this.seatEvents.revoked(roomId, '0'); // the old device stops receiving the game
     return { seatIndex: 0, credentials };
   }
 

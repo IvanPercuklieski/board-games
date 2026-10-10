@@ -26,6 +26,9 @@ import { CardComponent } from '../../ui/card/card.component';
 import { EmptyStateComponent } from '../../ui/empty-state/empty-state.component';
 import { SpinnerComponent } from '../../ui/feedback/spinner.component';
 
+/** How long a lost connection may last before we ask whether the seat still exists. */
+const SEAT_CHECK_DELAY_MS = 3000;
+
 type State = 'loading' | 'playing' | 'no-seat' | 'gone' | 'offline' | 'unsupported';
 type Session = GameSession<unknown>;
 
@@ -60,7 +63,7 @@ type Session = GameSession<unknown>;
           <bt-empty-state
             icon="door-open"
             title="This table has been cleared"
-            description="The game has ended or the host closed the room."
+            description="The game has ended, the host closed the room, or your seat was given to someone else."
           />
         }
         @case ('unsupported') {
@@ -202,8 +205,22 @@ export class PlayPage implements OnInit {
     return session ? describeGameOver(session.gameover(), session.players()) : '';
   });
 
+  private credentials: string | undefined;
+  private seatCheck: ReturnType<typeof setTimeout> | undefined;
+
   constructor() {
-    inject(DestroyRef).onDestroy(() => this.session()?.stop());
+    inject(DestroyRef).onDestroy(() => {
+      clearTimeout(this.seatCheck);
+      this.session()?.stop();
+    });
+    // A lost connection may mean the host gave this seat away (the server disconnects it).
+    effect(() => {
+      const session = this.session();
+      clearTimeout(this.seatCheck);
+      if (session && !session.isConnected() && session.gameover() === undefined) {
+        this.seatCheck = setTimeout(() => void this.checkSeat(), SEAT_CHECK_DELAY_MS);
+      }
+    });
     // The server deletes the room when the game ends; this browser's seat goes with it.
     effect(() => {
       if (this.session()?.gameover() !== undefined) this.seatStore.forget(this.roomId());
@@ -223,6 +240,7 @@ export class PlayPage implements OnInit {
     }
     this.state.set('loading');
 
+    this.credentials = seat.credentials;
     let lobby;
     try {
       lobby = await this.api.lobby(roomId, seat.credentials);
@@ -257,7 +275,21 @@ export class PlayPage implements OnInit {
     });
     session.start();
     this.session.set(session);
-    this.board.set(await loadBoard());
     this.state.set('playing');
+    this.board.set(await loadBoard());
+  }
+
+  /** Still disconnected: if the seat no longer exists, stop and explain instead of waiting. */
+  private async checkSeat() {
+    if (!this.credentials) return;
+    try {
+      await this.api.lobby(this.roomId(), this.credentials);
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'not_found') {
+        this.session()?.stop();
+        this.seatStore.forget(this.roomId());
+        this.state.set('gone');
+      }
+    }
   }
 }
