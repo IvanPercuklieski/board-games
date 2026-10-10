@@ -5,11 +5,12 @@ import { render, screen } from '@testing-library/angular';
 import userEvent from '@testing-library/user-event';
 import { AuthService, type AuthUser } from '../core/auth.service';
 import { ThemeService } from '../ui/theme/theme.service';
+import { ToastService } from '../ui/toast/toast.service';
 import { ShellComponent } from './shell.component';
 
 async function setup(user: AuthUser | null) {
   localStorage.clear();
-  const signOut = vi.fn(async () => undefined);
+  const signOut = vi.fn(async (): Promise<void> => undefined);
   await render(ShellComponent, {
     providers: [
       provideRouter([]),
@@ -56,6 +57,21 @@ describe('ShellComponent', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Log out' }));
     expect(signOut).toHaveBeenCalled();
     expect(navigate).toHaveBeenCalledWith('/login');
+  });
+
+  it('still goes to the login page and explains when logging out fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { signOut, navigate } = await setup(ivan);
+    signOut.mockRejectedValue(new Error('storage blocked'));
+    await userEvent.click(screen.getByRole('button', { name: 'Log out' }));
+    expect(navigate).toHaveBeenCalledWith('/login');
+    expect(
+      TestBed.inject(ToastService)
+        .toasts()
+        .map((t) => t.message),
+    ).toEqual([expect.stringMatching(/^Logging out didn’t finish\./)]);
+    TestBed.inject(ToastService).clear();
+    vi.restoreAllMocks();
   });
 
   it('cycles the colour mode: system, light, dark', async () => {

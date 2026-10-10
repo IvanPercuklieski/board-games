@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { asyncAction } from '../core/async-action';
 import { AuthService } from '../core/auth.service';
 import { ButtonComponent } from '../ui/button/button.component';
 import { IconButtonComponent } from '../ui/button/icon-button.component';
@@ -55,7 +56,15 @@ const MODE_ICON: Record<ThemeMode, IconName> = { system: 'desktop', light: 'sun'
           ></button>
           @if (auth.user(); as user) {
             <span class="user">{{ user.displayName }}</span>
-            <button bt-button variant="ghost" size="sm" (click)="logOut()">Log out</button>
+            <button
+              bt-button
+              variant="ghost"
+              size="sm"
+              [loading]="logOutAction.busy()"
+              (click)="logOutAction.run()"
+            >
+              Log out
+            </button>
           }
         </div>
       </div>
@@ -166,8 +175,14 @@ export class ShellComponent {
     this.theme.setMode(NEXT_MODE[this.theme.mode()]);
   }
 
-  protected async logOut() {
-    await this.auth.signOut();
-    await this.router.navigateByUrl('/login');
-  }
+  protected readonly logOutAction = asyncAction(
+    async () => {
+      try {
+        await this.auth.signOut();
+      } finally {
+        await this.router.navigateByUrl('/login'); // even if something failed on the way
+      }
+    },
+    { context: 'Logging out didn’t finish.' },
+  );
 }

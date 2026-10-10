@@ -3,9 +3,15 @@ import { provideRouter } from '@angular/router';
 import type { ListRoomsResponse } from '@board-table/shared';
 import { render, screen, within } from '@testing-library/angular';
 import userEvent from '@testing-library/user-event';
-import { ApiClient } from '../../core/api-client';
+import { ApiClient, ApiError } from '../../core/api-client';
 import { ConfirmService } from '../../ui/dialog/confirm.service';
+import { ToastService } from '../../ui/toast/toast.service';
 import { MyRoomsPage, relativeTime } from './my-rooms.page';
+
+const toastMessages = () =>
+  TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => t.message);
 
 const roomA = 'AbCdEfGhIjKlMnOpQrSt_-';
 const roomB = 'BbCdEfGhIjKlMnOpQrSt_-';
@@ -50,6 +56,11 @@ async function setup(list: ListRoomsResponse, confirmed = true) {
 }
 
 describe('MyRoomsPage', () => {
+  afterEach(() => {
+    TestBed.inject(ToastService).clear();
+    vi.restoreAllMocks();
+  });
+
   it('lists open rooms with game, status and players', async () => {
     await setup(rooms);
     const list = await screen.findByRole('list', { name: 'Your rooms' });
@@ -79,6 +90,31 @@ describe('MyRoomsPage', () => {
     await screen.findByRole('list', { name: 'Your rooms' });
     TestBed.createComponent(MyRoomsPage).detectChanges(); // the next visit
     await vi.waitFor(() => expect(api.listRooms).toHaveBeenCalledTimes(2));
+  });
+
+  it('shows a retry panel and a toast when the rooms can’t be loaded', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const api = {
+      listRooms: vi.fn(async () => Promise.reject(new ApiError('network', 0))),
+      closeRoom: vi.fn(),
+    };
+    await render(MyRoomsPage, {
+      providers: [provideRouter([]), { provide: ApiClient, useValue: api }],
+    });
+    expect(
+      await screen.findByRole('heading', { name: 'Your rooms couldn’t be loaded' }),
+    ).toBeTruthy();
+    expect(toastMessages()).toEqual([expect.stringMatching(/^Your rooms couldn’t be loaded\./)]);
+  });
+
+  it('keeps the room and explains when closing fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { api } = await setup(rooms);
+    api.closeRoom.mockRejectedValue(new ApiError('network', 0));
+    const list = await screen.findByRole('list', { name: 'Your rooms' });
+    await userEvent.click(within(list).getAllByRole('button', { name: /Close room/ })[0]!);
+    expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+    expect(toastMessages()).toEqual([expect.stringMatching(/^The room couldn’t be closed\./)]);
   });
 
   it('keeps the room when the host cancels', async () => {

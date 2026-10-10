@@ -1,8 +1,10 @@
+import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { render, screen } from '@testing-library/angular';
 import userEvent from '@testing-library/user-event';
 import { ApiClient, ApiError } from '../../core/api-client';
 import { SeatStore } from '../../core/seat-store';
+import { ToastService } from '../../ui/toast/toast.service';
 import { GameDetailPage } from './game-detail.page';
 
 const roomId = 'AbCdEfGhIjKlMnOpQrSt_-';
@@ -52,6 +54,24 @@ describe('GameDetailPage', () => {
     expect(alert.textContent).toMatch(/3 open rooms/);
     expect(screen.getByRole('link', { name: 'My rooms' }).getAttribute('href')).toBe('/rooms');
     expect(navigate).not.toHaveBeenCalled();
+    expect(TestBed.inject(ToastService).toasts()).toEqual([]); // shown inline only
+  });
+
+  it('shows other failures as a toast', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    await setup('tictactoe', async () => {
+      throw new ApiError('rate_limited', 429);
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Host a game' }));
+    await vi.waitFor(() =>
+      expect(
+        TestBed.inject(ToastService)
+          .toasts()
+          .map((t) => t.message),
+      ).toEqual([expect.stringMatching(/^The table couldn’t be set up\. That was a lot of tries/)]),
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+    TestBed.inject(ToastService).clear();
   });
 
   it('shows a friendly message for an unknown game', async () => {

@@ -9,6 +9,7 @@ import { AuthService } from '../../core/auth.service';
 import { SeatStore } from '../../core/seat-store';
 import type { GameSession, SessionPlayer } from '../../game-client/game-session';
 import { GAME_BOARDS, GAME_SESSION_FACTORY } from '../../games/boards';
+import { ToastService } from '../../ui/toast/toast.service';
 import { PlayPage } from './play.page';
 
 const roomId = 'AbCdEfGhIjKlMnOpQrSt_-';
@@ -194,6 +195,38 @@ describe('PlayPage', () => {
     expect(screen.getByText('Reconnecting…')).toBeTruthy();
     expect(sessions[0]!.stop).not.toHaveBeenCalled();
     vi.useRealTimers();
+  });
+
+  it('offers a retry and starts no session when the board can’t be loaded', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    localStorage.setItem(
+      `bt-seat:${roomId}`,
+      JSON.stringify({ seatIndex: 1, credentials: secret }),
+    );
+    const factory = vi.fn();
+    await render(PlayPage, {
+      providers: [
+        provideRouter([]),
+        { provide: ApiClient, useValue: { lobby: vi.fn(async () => lobby()) } },
+        { provide: AuthService, useValue: { isSignedIn: signal(false) } },
+        {
+          provide: GAME_BOARDS,
+          useValue: {
+            tictactoe: () =>
+              Promise.reject(new TypeError('Failed to fetch dynamically imported module: /b.js')),
+          },
+        },
+        { provide: GAME_SESSION_FACTORY, useValue: factory },
+      ],
+      componentInputs: { roomId },
+    });
+    expect(
+      await screen.findByRole('heading', { name: 'Can’t reach the table right now' }),
+    ).toBeTruthy();
+    expect(factory).not.toHaveBeenCalled();
+    const [toast] = TestBed.inject(ToastService).toasts();
+    expect(toast!.action?.label).toBe('Reload');
+    TestBed.inject(ToastService).clear();
   });
 
   it('closes the connection when leaving the page', async () => {

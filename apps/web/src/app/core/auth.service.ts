@@ -1,5 +1,10 @@
 import { DestroyRef, Injectable, InjectionToken, computed, inject, signal } from '@angular/core';
-import { AuthClient, type GoTrueClient, type Session } from '@supabase/auth-js';
+import {
+  AuthClient,
+  isAuthRetryableFetchError,
+  type GoTrueClient,
+  type Session,
+} from '@supabase/auth-js';
 import { RuntimeConfigService } from './runtime-config.service';
 
 /** The parts of the Supabase auth client we use (a fake is injected in tests). */
@@ -30,7 +35,7 @@ export interface AuthUser {
   displayName: string;
 }
 
-export type SignInResult = 'ok' | 'invalid_credentials' | 'error';
+export type SignInResult = 'ok' | 'invalid_credentials' | 'network' | 'error';
 
 /** Host login state as signals. Guests never log in; they use invite links. */
 @Injectable({ providedIn: 'root' })
@@ -62,13 +67,21 @@ export class AuthService {
 
   async signIn(email: string, password: string): Promise<SignInResult> {
     const { data, error } = await this.auth.signInWithPassword({ email, password });
-    if (error) return error.code === 'invalid_credentials' ? 'invalid_credentials' : 'error';
+    if (error) {
+      if (error.code === 'invalid_credentials') return 'invalid_credentials';
+      return isAuthRetryableFetchError(error) ? 'network' : 'error';
+    }
     this.session.set(data.session);
     return 'ok';
   }
 
+  /**
+   * Ends the session everywhere; if the server can't be reached, at least on this device
+   * (Supabase keeps the stored session when the global sign-out fails).
+   */
   async signOut(): Promise<void> {
-    await this.auth.signOut();
+    const { error } = await this.auth.signOut();
+    if (error) await this.auth.signOut({ scope: 'local' });
     this.session.set(null);
   }
 

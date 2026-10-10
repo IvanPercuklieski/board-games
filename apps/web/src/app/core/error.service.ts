@@ -35,6 +35,12 @@ export class ErrorService {
     });
   }
 
+  /** A known failure that isn't an exception, e.g. copying to the clipboard didn't work. */
+  notice(message: string) {
+    if (this.shownRecently(message)) return;
+    this.toasts.show({ message, tone: 'danger', durationMs: DURATION_MS });
+  }
+
   private actionFor(error: unknown): ToastAction | undefined {
     if (isChunkLoadError(error)) {
       return { label: 'Reload', run: () => this.document.location.reload() };

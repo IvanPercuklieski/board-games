@@ -1,9 +1,11 @@
+import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import type { PreviewResponse } from '@board-table/shared';
 import { render, screen } from '@testing-library/angular';
 import userEvent from '@testing-library/user-event';
 import { ApiClient, ApiError } from '../../core/api-client';
 import { SeatStore } from '../../core/seat-store';
+import { ToastService } from '../../ui/toast/toast.service';
 import { JoinPage, tokenFromFragment } from './join.page';
 
 const roomId = 'AbCdEfGhIjKlMnOpQrSt_-';
@@ -44,7 +46,11 @@ async function setup({
 
 describe('JoinPage', () => {
   beforeEach(() => localStorage.clear());
-  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => vi.spyOn(console, 'error').mockImplementation(() => undefined));
+  afterEach(() => {
+    TestBed.inject(ToastService).clear();
+    vi.restoreAllMocks();
+  });
 
   it('previews the table the invite is for', async () => {
     const { api } = await setup();
@@ -108,6 +114,11 @@ describe('JoinPage', () => {
     await userEvent.type(await screen.findByLabelText('Your name'), 'Mara');
     await userEvent.click(screen.getByRole('button', { name: 'Take a seat' }));
     expect(await screen.findByRole('heading', { name: 'This table is full' })).toBeTruthy();
+    expect(
+      TestBed.inject(ToastService)
+        .toasts()
+        .map((t) => t.message),
+    ).toEqual(['You couldn’t take a seat. Every seat at this table is taken.']);
   });
 
   it('offers a retry when the server cannot be reached', async () => {
@@ -119,7 +130,13 @@ describe('JoinPage', () => {
         return preview();
       },
     });
-    await userEvent.click(await screen.findByRole('button', { name: 'Try again' }));
+    const retry = await screen.findByRole('button', { name: 'Try again' });
+    expect(
+      TestBed.inject(ToastService)
+        .toasts()
+        .map((t) => t.message),
+    ).toEqual([expect.stringMatching(/^The table couldn’t be loaded\. Can’t reach/)]);
+    await userEvent.click(retry);
     expect(await screen.findByLabelText('Your name')).toBeTruthy();
     expect(api.preview).toHaveBeenCalledTimes(2);
   });

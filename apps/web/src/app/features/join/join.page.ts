@@ -11,6 +11,8 @@ import {
 import { Router } from '@angular/router';
 import { playerNameSchema, type PreviewResponse } from '@board-table/shared';
 import { ApiClient, ApiError } from '../../core/api-client';
+import { asyncAction } from '../../core/async-action';
+import { ErrorService } from '../../core/error.service';
 import { SeatStore } from '../../core/seat-store';
 import { GameCoverComponent } from '../../games/covers/game-cover.component';
 import { ButtonComponent } from '../../ui/button/button.component';
@@ -68,7 +70,9 @@ export function tokenFromFragment(fragment: string | null | undefined): string |
                     (input)="name.set(value($event))"
                   />
                 </bt-text-field>
-                <button bt-button type="submit" size="lg" [loading]="busy()">Take a seat</button>
+                <button bt-button type="submit" size="lg" [loading]="joinAction.busy()">
+                  Take a seat
+                </button>
               </form>
             </bt-card>
           }
@@ -155,8 +159,20 @@ export class JoinPage implements OnInit {
   protected readonly preview = signal<PreviewResponse | null>(null);
   protected readonly name = signal('');
   protected readonly showErrors = signal(false);
-  protected readonly busy = signal(false);
+  private readonly errors = inject(ErrorService);
   private token: string | null = null;
+
+  protected readonly joinAction = asyncAction(
+    async (token: string, name: string) => {
+      const seat = await this.api.join(this.roomId(), { token, name });
+      this.seatStore.saveSeat(this.roomId(), seat);
+      await this.router.navigateByUrl(`/rooms/${this.roomId()}`);
+    },
+    {
+      context: 'You couldn’t take a seat.',
+      onError: (e) => this.state.set(stateFor(e)), // the page explains it too
+    },
+  );
 
   protected readonly nameError = computed(() =>
     playerNameSchema.safeParse(this.name()).success ? null : 'Enter the name the others will see',
@@ -191,6 +207,7 @@ export class JoinPage implements OnInit {
       );
     } catch (e) {
       this.state.set(stateFor(e));
+      this.errors.report(e, { context: 'The table couldn’t be loaded.' });
     }
   }
 
@@ -202,18 +219,8 @@ export class JoinPage implements OnInit {
     event.preventDefault();
     this.showErrors.set(true);
     const name = playerNameSchema.safeParse(this.name());
-    if (!name.success || !this.token || this.busy()) return;
-
-    this.busy.set(true);
-    try {
-      const seat = await this.api.join(this.roomId(), { token: this.token, name: name.data });
-      this.seatStore.saveSeat(this.roomId(), seat);
-      await this.router.navigateByUrl(`/rooms/${this.roomId()}`);
-    } catch (e) {
-      this.state.set(stateFor(e));
-    } finally {
-      this.busy.set(false);
-    }
+    if (!name.success || !this.token) return;
+    await this.joinAction.run(this.token, name.data);
   }
 }
 

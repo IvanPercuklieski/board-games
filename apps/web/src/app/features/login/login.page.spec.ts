@@ -1,11 +1,13 @@
 import { signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { render, screen } from '@testing-library/angular';
 import userEvent from '@testing-library/user-event';
-import { AuthService } from '../../core/auth.service';
+import { AuthService, type SignInResult } from '../../core/auth.service';
+import { ToastService } from '../../ui/toast/toast.service';
 import { LoginPage } from './login.page';
 
-async function setup(result: 'ok' | 'invalid_credentials' | 'error' = 'ok', next?: string) {
+async function setup(result: SignInResult = 'ok', next?: string) {
   const signIn = vi.fn(async () => result);
   const view = await render(LoginPage, {
     providers: [
@@ -62,5 +64,22 @@ describe('LoginPage', () => {
     expect(await screen.findByRole('alert')).toBeTruthy();
     expect(screen.getByRole('alert').textContent).toMatch(/email or password is wrong/i);
     expect(navigate).not.toHaveBeenCalled();
+    expect(TestBed.inject(ToastService).toasts()).toEqual([]); // the form explains it
+  });
+
+  it('explains a network failure in the form and as a toast', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    await setup('network');
+    await userEvent.type(screen.getByLabelText('Email'), 'ivan@example.com');
+    await userEvent.type(screen.getByLabelText('Password'), 'right');
+    await userEvent.click(screen.getByRole('button', { name: 'Log in' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/didn’t work just now/);
+    expect(
+      TestBed.inject(ToastService)
+        .toasts()
+        .map((t) => t.message),
+    ).toEqual([expect.stringMatching(/^Logging in didn’t work\. Can’t reach board·table/)]);
+    TestBed.inject(ToastService).clear();
+    vi.restoreAllMocks();
   });
 });

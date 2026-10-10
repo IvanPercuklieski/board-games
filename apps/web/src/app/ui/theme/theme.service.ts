@@ -38,7 +38,7 @@ function readStoredMode(): ThemeMode {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
     return MODES.find((m) => m === stored) ?? 'system';
   } catch {
-    return 'system';
+    return 'system'; // storage blocked: follow the system setting
   }
 }
 

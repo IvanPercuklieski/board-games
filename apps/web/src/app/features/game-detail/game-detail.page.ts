@@ -3,6 +3,7 @@ import { Router, RouterLink } from '@angular/router';
 import { getCatalogEntry } from '@board-table/games/catalog';
 import { LIMITS } from '@board-table/shared';
 import { ApiClient, ApiError } from '../../core/api-client';
+import { asyncAction } from '../../core/async-action';
 import { SeatStore } from '../../core/seat-store';
 import { GameCoverComponent } from '../../games/covers/game-cover.component';
 import { ButtonComponent } from '../../ui/button/button.component';
@@ -60,19 +61,19 @@ import { GameFactsComponent } from '../catalog/game-facts.component';
               <p class="fixed-seats"><bt-icon name="users" /> A table for {{ game.minPlayers }}</p>
             }
 
-            @if (failure(); as failure) {
+            @if (limitReached()) {
               <p class="failure" role="alert">
                 <bt-icon name="warning-circle" />
                 <span>
-                  {{ failure }}
-                  @if (limitReached()) {
-                    <a routerLink="/rooms">My rooms</a>
-                  }
+                  You already have {{ maxRooms }} open rooms. Close one first in
+                  <a routerLink="/rooms">My rooms</a>
                 </span>
               </p>
             }
 
-            <button bt-button size="lg" [loading]="busy()" (click)="host()">Host a game</button>
+            <button bt-button size="lg" [loading]="hostAction.busy()" (click)="host()">
+              Host a game
+            </button>
           </bt-card>
         </div>
       } @else {
@@ -198,35 +199,31 @@ export class GameDetailPage {
   /** Defaults to the game's minimum until the host picks another number. */
   protected readonly seats = computed(() => this.chosenSeats() ?? this.game()?.minPlayers);
 
-  protected readonly busy = signal(false);
-  protected readonly failure = signal<string | null>(null);
+  /** Shown inline (with a link to My rooms) instead of a toast. */
   protected readonly limitReached = signal(false);
+  protected readonly maxRooms = LIMITS.maxActiveRoomsPerHost;
+
+  protected readonly hostAction = asyncAction(
+    async (gameId: string, maxSeats: number) => {
+      this.limitReached.set(false);
+      const room = await this.api.createRoom({ gameId, maxSeats });
+      this.seatStore.saveSeat(room.roomId, room.seat);
+      this.seatStore.saveInviteUrl(room.roomId, room.inviteUrl);
+      await this.router.navigateByUrl(`/rooms/${room.roomId}`);
+    },
+    {
+      context: 'The table couldn’t be set up.',
+      onError: (e) => {
+        const limit = e instanceof ApiError && e.code === 'limit_reached';
+        this.limitReached.set(limit);
+        return limit;
+      },
+    },
+  );
 
   protected async host() {
     const game = this.game();
     const maxSeats = this.seats();
-    if (!game || maxSeats === undefined || this.busy()) return;
-
-    this.busy.set(true);
-    this.failure.set(null);
-    this.limitReached.set(false);
-    try {
-      const room = await this.api.createRoom({ gameId: game.id, maxSeats });
-      this.seatStore.saveSeat(room.roomId, room.seat);
-      this.seatStore.saveInviteUrl(room.roomId, room.inviteUrl);
-      await this.router.navigateByUrl(`/rooms/${room.roomId}`);
-    } catch (e) {
-      const code = e instanceof ApiError ? e.code : 'internal_error';
-      this.limitReached.set(code === 'limit_reached');
-      this.failure.set(
-        code === 'limit_reached'
-          ? `You already have ${LIMITS.maxActiveRoomsPerHost} open rooms. Close one first in`
-          : code === 'rate_limited'
-            ? 'That was a lot of tables in a short time. Try again in a little while.'
-            : 'The table couldn’t be set up just now. Please try again.',
-      );
-    } finally {
-      this.busy.set(false);
-    }
+    if (game && maxSeats !== undefined) await this.hostAction.run(game.id, maxSeats);
   }
 }

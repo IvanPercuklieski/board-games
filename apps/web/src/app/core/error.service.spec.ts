@@ -57,6 +57,15 @@ describe('ErrorService', () => {
     expect(navigate).toHaveBeenCalledWith('/login?next=%2F');
   });
 
+  it('shows known failures that aren’t exceptions, once', () => {
+    errors.notice('Copying didn’t work.');
+    errors.notice('Copying didn’t work.');
+    expect(toasts.toasts()).toEqual([
+      expect.objectContaining({ message: 'Copying didn’t work.', tone: 'danger' }),
+    ]);
+    expect(log).not.toHaveBeenCalled();
+  });
+
   it('offers to reload when a newer version of the app is deployed', () => {
     errors.report(new TypeError('Failed to fetch dynamically imported module: /chunk-A.js'));
     expect(toasts.toasts()[0]!.action?.label).toBe('Reload');

@@ -45,7 +45,7 @@ function read(key: string): string | undefined {
   try {
     return localStorage.getItem(key) ?? undefined;
   } catch {
-    return undefined;
+    return undefined; // storage blocked (private mode, site data off): nothing stored here
   }
 }
 

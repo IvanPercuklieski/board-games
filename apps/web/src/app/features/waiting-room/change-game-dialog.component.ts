@@ -3,10 +3,10 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { gameCatalog, type GameCatalogEntry } from '@board-table/games/catalog';
 import { LIMITS, type RoomSummary } from '@board-table/shared';
 import { firstValueFrom } from 'rxjs';
-import { ApiClient, ApiError } from '../../core/api-client';
+import { ApiClient } from '../../core/api-client';
+import { asyncAction } from '../../core/async-action';
 import { ButtonComponent } from '../../ui/button/button.component';
 import { SegmentedComponent } from '../../ui/segmented/segmented.component';
-import { ToastService } from '../../ui/toast/toast.service';
 
 export interface ChangeGameData {
   roomId: string;
@@ -113,7 +113,7 @@ let nextId = 0;
     }
     <div class="actions">
       <button bt-button variant="ghost" (click)="ref.close(undefined)">Cancel</button>
-      <button bt-button [loading]="busy()" (click)="save()">Save</button>
+      <button bt-button [loading]="saveAction.busy()" (click)="saveAction.run()">Save</button>
     </div>
   `,
   styles: `
@@ -193,7 +193,6 @@ export class ChangeGameDialogComponent {
   private readonly data = inject<ChangeGameData>(DIALOG_DATA);
   protected readonly ref = inject<DialogRef<RoomSummary | undefined>>(DialogRef);
   private readonly api = inject(ApiClient);
-  private readonly toasts = inject(ToastService);
 
   private readonly id = nextId++;
   protected readonly titleId = `bt-change-game-title-${this.id}`;
@@ -202,7 +201,6 @@ export class ChangeGameDialogComponent {
 
   protected readonly gameId = signal(this.data.gameId);
   protected readonly maxSeats = signal(this.data.maxSeats);
-  protected readonly busy = signal(false);
 
   private readonly game = computed(
     () => this.choices.find((c) => c.game.id === this.gameId())?.game,
@@ -231,31 +229,14 @@ export class ChangeGameDialogComponent {
     if (!options.includes(this.maxSeats())) this.maxSeats.set(options[0] ?? this.data.seated);
   }
 
-  protected async save() {
-    if (this.busy()) return;
-    this.busy.set(true);
-    try {
+  protected readonly saveAction = asyncAction(
+    async () => {
       const room = await this.api.updateRoom(this.data.roomId, {
         gameId: this.gameId(),
         maxSeats: this.maxSeats(),
       });
       this.ref.close(room);
-    } catch (e) {
-      this.toasts.show({ message: failureMessage(e), tone: 'danger' });
-    } finally {
-      this.busy.set(false);
-    }
-  }
-}
-
-function failureMessage(e: unknown): string {
-  if (!(e instanceof ApiError)) return 'The game couldn’t be changed. Try again.';
-  switch (e.code) {
-    case 'too_many_players':
-      return 'Too many players are seated for that game. Free a seat first.';
-    case 'room_locked':
-      return 'The game has already started.';
-    default:
-      return 'The game couldn’t be changed. Try again.';
-  }
+    },
+    { context: 'The game couldn’t be changed.' },
+  );
 }

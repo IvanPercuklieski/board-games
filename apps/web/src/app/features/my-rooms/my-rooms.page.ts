@@ -3,6 +3,8 @@ import { RouterLink } from '@angular/router';
 import { getCatalogEntry } from '@board-table/games/catalog';
 import type { RoomSummary } from '@board-table/shared';
 import { ApiClient } from '../../core/api-client';
+import { asyncAction } from '../../core/async-action';
+import { ErrorService } from '../../core/error.service';
 import { SeatStore } from '../../core/seat-store';
 import { BadgeComponent } from '../../ui/badge/badge.component';
 import { ButtonComponent } from '../../ui/button/button.component';
@@ -82,7 +84,13 @@ import { ToastService } from '../../ui/toast/toast.service';
                       <a bt-button variant="secondary" [routerLink]="['/rooms', room.roomId]">
                         <bt-icon name="arrow-right" /> Open
                       </a>
-                      <button bt-button variant="ghost" (click)="close(room)">
+                      <button
+                        bt-button
+                        variant="ghost"
+                        [loading]="closing() === room.roomId"
+                        [disabled]="closeAction.busy()"
+                        (click)="close(room)"
+                      >
                         <bt-icon name="door-open" /> Close room
                       </button>
                     </div>
@@ -168,9 +176,27 @@ export class MyRoomsPage {
   private readonly confirmService = inject(ConfirmService);
   private readonly seatStore = inject(SeatStore);
   private readonly toasts = inject(ToastService);
+  private readonly errors = inject(ErrorService);
 
   protected readonly state = signal<'loading' | 'ready' | 'error'>('loading');
   protected readonly rooms = signal<RoomSummary[]>([]);
+  /** The room whose Close is running, for its button's busy state. */
+  protected readonly closing = signal<string | null>(null);
+
+  protected readonly closeAction = asyncAction(
+    async (room: RoomSummary) => {
+      this.closing.set(room.roomId);
+      try {
+        await this.api.closeRoom(room.roomId);
+      } finally {
+        this.closing.set(null);
+      }
+      this.seatStore.forget(room.roomId);
+      this.rooms.update((rooms) => rooms.filter((r) => r.roomId !== room.roomId));
+      this.toasts.show({ message: 'Room closed', tone: 'success' });
+    },
+    { context: 'The room couldn’t be closed.' },
+  );
 
   constructor() {
     void this.load();
@@ -181,8 +207,9 @@ export class MyRoomsPage {
     try {
       this.rooms.set((await this.api.listRooms()).rooms);
       this.state.set('ready');
-    } catch {
+    } catch (e) {
       this.state.set('error');
+      this.errors.report(e, { context: 'Your rooms couldn’t be loaded.' });
     }
   }
 
@@ -202,17 +229,7 @@ export class MyRoomsPage {
       tone: 'danger',
     });
     if (!ok) return;
-    try {
-      await this.api.closeRoom(room.roomId);
-      this.seatStore.forget(room.roomId);
-      this.rooms.update((rooms) => rooms.filter((r) => r.roomId !== room.roomId));
-      this.toasts.show({ message: 'Room closed', tone: 'success' });
-    } catch {
-      this.toasts.show({
-        message: 'The room couldn’t be closed. Please try again.',
-        tone: 'danger',
-      });
-    }
+    await this.closeAction.run(room);
   }
 }
 

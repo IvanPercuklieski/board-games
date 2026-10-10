@@ -16,6 +16,8 @@ import { getCatalogEntry } from '@board-table/games/catalog';
 import type { LobbyResponse, SeatInfo } from '@board-table/shared';
 import { ApiClient, ApiError } from '../../core/api-client';
 import { AuthService } from '../../core/auth.service';
+import { asyncAction } from '../../core/async-action';
+import { ErrorService } from '../../core/error.service';
 import { Poller } from '../../core/poller';
 import { SeatStore, type StoredSeat } from '../../core/seat-store';
 import { GameCoverComponent } from '../../games/covers/game-cover.component';
@@ -33,7 +35,7 @@ import { openChangeGameDialog } from './change-game-dialog.component';
 
 const POLL_INTERVAL_MS = 3000;
 
-type State = 'loading' | 'ready' | 'no-seat' | 'gone';
+type State = 'loading' | 'ready' | 'no-seat' | 'gone' | 'offline';
 
 /** The lobby before a game: who sits where; the host shares the link and starts. */
 @Component({
@@ -73,6 +75,15 @@ type State = 'loading' | 'ready' | 'no-seat' | 'gone';
             description="The host closed the room, or your seat was given to someone else."
           >
             <a bt-button variant="secondary" routerLink="/">Go to the games</a>
+          </bt-empty-state>
+        }
+        @case ('offline') {
+          <bt-empty-state
+            icon="warning-circle"
+            title="Can’t reach the table right now"
+            description="Check your connection and try again."
+          >
+            <button bt-button variant="secondary" (click)="retry()">Try again</button>
           </bt-empty-state>
         }
         @case ('ready') {
@@ -116,6 +127,7 @@ type State = 'loading' | 'ready' | 'no-seat' | 'gone';
                           icon="x"
                           size="sm"
                           [label]="'Free seat ' + (row.seatIndex + 1) + ' (' + row.seat.name + ')'"
+                          [disabled]="freeSeatAction.busy()"
                           (click)="freeSeat(row.seat)"
                         ></button>
                       }
@@ -162,7 +174,7 @@ type State = 'loading' | 'ready' | 'no-seat' | 'gone';
                         <button
                           bt-button
                           variant="ghost"
-                          [loading]="linkBusy()"
+                          [loading]="newLinkAction.busy()"
                           (click)="newLink()"
                         >
                           <bt-icon name="arrows-clockwise" /> New link
@@ -176,7 +188,7 @@ type State = 'loading' | 'ready' | 'no-seat' | 'gone';
                       <button
                         bt-button
                         variant="secondary"
-                        [loading]="linkBusy()"
+                        [loading]="newLinkAction.busy()"
                         (click)="newLink()"
                       >
                         <bt-icon name="arrows-clockwise" /> New link
@@ -190,7 +202,7 @@ type State = 'loading' | 'ready' | 'no-seat' | 'gone';
                       size="lg"
                       class="start"
                       [disabled]="!canStart()"
-                      [loading]="startBusy()"
+                      [loading]="startAction.busy()"
                       (click)="start()"
                     >
                       <bt-icon name="play" /> {{ played() ? 'Play again' : 'Start game' }}
@@ -200,7 +212,12 @@ type State = 'loading' | 'ready' | 'no-seat' | 'gone';
                         Waiting for at least {{ minPlayers() }} players
                       </p>
                     }
-                    <button bt-button variant="ghost" (click)="close()">
+                    <button
+                      bt-button
+                      variant="ghost"
+                      [loading]="closeAction.busy()"
+                      (click)="close()"
+                    >
                       <bt-icon name="door-open" /> Close room
                     </button>
                   </bt-card>
@@ -371,6 +388,7 @@ export class WaitingRoomPage implements OnInit {
   private readonly dialog = inject(Dialog);
   private readonly clipboard = inject(Clipboard);
   private readonly toasts = inject(ToastService);
+  private readonly errors = inject(ErrorService);
 
   private readonly poller = new Poller(() => this.refresh(), POLL_INTERVAL_MS);
   private seat: StoredSeat | undefined;
@@ -379,8 +397,32 @@ export class WaitingRoomPage implements OnInit {
   protected readonly lobby = signal<LobbyResponse | null>(null);
   protected readonly inviteUrl = signal<string | undefined>(undefined);
   protected readonly connectionLost = signal(false);
-  protected readonly linkBusy = signal(false);
-  protected readonly startBusy = signal(false);
+
+  protected readonly newLinkAction = asyncAction(
+    async () => {
+      const { inviteUrl } = await this.api.regenerateInvite(this.roomId());
+      this.seatStore.saveInviteUrl(this.roomId(), inviteUrl);
+      this.inviteUrl.set(inviteUrl);
+      this.toasts.show({ message: 'New invite link ready', tone: 'success' });
+    },
+    { context: 'The link couldn’t be renewed.' },
+  );
+  protected readonly startAction = asyncAction(() => this.api.startRoom(this.roomId()), {
+    context: 'The game couldn’t be started.',
+    // someone already started it: the next poll moves everyone to the table
+    onError: (e) => e instanceof ApiError && e.code === 'room_locked',
+  });
+  protected readonly freeSeatAction = asyncAction(
+    (seat: SeatInfo) => this.api.freeSeat(this.roomId(), seat.seatIndex),
+    { context: 'The seat couldn’t be freed.' },
+  );
+  protected readonly closeAction = asyncAction(
+    async () => {
+      await this.api.closeRoom(this.roomId());
+      return true;
+    },
+    { context: 'The room couldn’t be closed.' },
+  );
 
   private readonly game = computed(() => getCatalogEntry(this.lobby()?.gameId ?? ''));
   protected readonly gameName = computed(() => this.game()?.displayName ?? 'Game');
@@ -415,9 +457,20 @@ export class WaitingRoomPage implements OnInit {
     void this.init();
   }
 
+  protected retry() {
+    this.state.set('loading');
+    void this.init();
+  }
+
   private async init() {
     const roomId = this.roomId();
-    this.seat = this.seatStore.seat(roomId) ?? (await this.reclaimHostSeat(roomId));
+    try {
+      this.seat = this.seatStore.seat(roomId) ?? (await this.reclaimHostSeat(roomId));
+    } catch (e) {
+      this.state.set('offline');
+      this.errors.report(e, { context: 'The table couldn’t be loaded.' });
+      return;
+    }
     if (!this.seat) {
       this.state.set('no-seat');
       return;
@@ -433,8 +486,9 @@ export class WaitingRoomPage implements OnInit {
       const seat = await this.api.reclaimHostSeat(roomId);
       this.seatStore.saveSeat(roomId, seat);
       return seat;
-    } catch {
-      return undefined; // not this user's room
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'not_found') return undefined; // not their room
+      throw e; // e.g. offline: init shows it
     }
   }
 
@@ -454,8 +508,9 @@ export class WaitingRoomPage implements OnInit {
         this.poller.stop();
         this.seatStore.forget(this.roomId());
         this.state.set('gone');
+        this.errors.report(e);
       } else {
-        this.connectionLost.set(true);
+        this.connectionLost.set(true); // background polling: shown inline, no toast
       }
     }
   }
@@ -466,11 +521,8 @@ export class WaitingRoomPage implements OnInit {
 
   protected copy(url: string) {
     const copied = this.clipboard.copy(url);
-    this.toasts.show(
-      copied
-        ? { message: 'Invite link copied', tone: 'success' }
-        : { message: 'Copying didn’t work. Select the link and copy it by hand.', tone: 'danger' },
-    );
+    if (copied) this.toasts.show({ message: 'Invite link copied', tone: 'success' });
+    else this.errors.notice('Copying didn’t work. Select the link and copy it by hand.');
   }
 
   protected async newLink() {
@@ -483,30 +535,11 @@ export class WaitingRoomPage implements OnInit {
       });
       if (!ok) return;
     }
-    this.linkBusy.set(true);
-    try {
-      const { inviteUrl } = await this.api.regenerateInvite(this.roomId());
-      this.seatStore.saveInviteUrl(this.roomId(), inviteUrl);
-      this.inviteUrl.set(inviteUrl);
-      this.toasts.show({ message: 'New invite link ready', tone: 'success' });
-    } catch {
-      this.toasts.show({ message: 'The link couldn’t be renewed. Try again.', tone: 'danger' });
-    } finally {
-      this.linkBusy.set(false);
-    }
+    await this.newLinkAction.run();
   }
 
   protected async start() {
-    this.startBusy.set(true);
-    try {
-      await this.api.startRoom(this.roomId());
-    } catch (e) {
-      if (!(e instanceof ApiError && e.code === 'room_locked')) {
-        this.toasts.show({ message: 'The game couldn’t be started. Try again.', tone: 'danger' });
-      }
-    } finally {
-      this.startBusy.set(false);
-    }
+    await this.startAction.run();
     await this.poller.runNow(); // picks up "playing" and moves to the table
   }
 
@@ -530,11 +563,7 @@ export class WaitingRoomPage implements OnInit {
       tone: 'danger',
     });
     if (!ok) return;
-    try {
-      await this.api.freeSeat(this.roomId(), seat.seatIndex);
-    } catch {
-      this.toasts.show({ message: 'The seat couldn’t be freed. Try again.', tone: 'danger' });
-    }
+    await this.freeSeatAction.run(seat);
     await this.poller.runNow();
   }
 
@@ -547,10 +576,7 @@ export class WaitingRoomPage implements OnInit {
     });
     if (!ok) return;
     this.poller.stop(); // before the request, so no lobby poll runs while the room is deleted
-    try {
-      await this.api.closeRoom(this.roomId());
-    } catch {
-      this.toasts.show({ message: 'The room couldn’t be closed. Try again.', tone: 'danger' });
+    if (!(await this.closeAction.run())) {
       this.poller.start();
       return;
     }

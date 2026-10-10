@@ -43,6 +43,7 @@ interface Options {
   lobbyResult?: () => Promise<LobbyResponse>;
   confirm?: boolean;
   played?: boolean;
+  reclaimResult?: () => Promise<{ seatIndex: number; credentials: string }>;
 }
 
 async function setup({
@@ -52,6 +53,7 @@ async function setup({
   lobbyResult = async () => lobby(),
   confirm = true,
   played,
+  reclaimResult = async () => ({ seatIndex: 0, credentials: hostSecret }),
 }: Options = {}) {
   localStorage.clear();
   if (seat) localStorage.setItem(`bt-seat:${roomId}`, JSON.stringify(seat));
@@ -59,7 +61,7 @@ async function setup({
 
   const api = {
     lobby: vi.fn(lobbyResult),
-    reclaimHostSeat: vi.fn(async () => ({ seatIndex: 0, credentials: hostSecret })),
+    reclaimHostSeat: vi.fn(reclaimResult),
     regenerateInvite: vi.fn(async () => ({ inviteUrl: `https://x.test/join/${roomId}#t=new` })),
     startRoom: vi.fn(async () => undefined),
     freeSeat: vi.fn(async () => undefined),
@@ -179,6 +181,49 @@ describe('WaitingRoomPage', () => {
       expect(screen.queryByRole('button', { name: /Start game/ })).toBeNull();
     });
 
+    it('disables freeing seats while one is being freed', async () => {
+      const { api } = await setup({ lobbyResult: async () => bothSeated() });
+      let finish!: () => void;
+      api.freeSeat.mockImplementation(
+        () => new Promise<undefined>((r) => (finish = () => r(undefined))),
+      );
+      const button = await screen.findByRole('button', { name: 'Free seat 2 (Mara)' });
+      await userEvent.click(button);
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+      finish();
+      await vi.waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    });
+
+    it('shows the close button as busy while closing', async () => {
+      const { api } = await setup();
+      let finish!: () => void;
+      api.closeRoom.mockImplementation(
+        () => new Promise<undefined>((r) => (finish = () => r(undefined))),
+      );
+      const close = await screen.findByRole('button', { name: /Close room/ });
+      await userEvent.click(close);
+      expect(close.getAttribute('aria-busy')).toBe('true');
+      finish();
+    });
+
+    it('offers a retry when the server can’t be reached on another device', async () => {
+      let fail = true;
+      const { api } = await setup({
+        seat: null,
+        reclaimResult: async () => {
+          if (fail) throw new ApiError('network', 0);
+          return { seatIndex: 0, credentials: hostSecret };
+        },
+      });
+      expect(
+        await screen.findByRole('heading', { name: 'Can’t reach the table right now' }),
+      ).toBeTruthy();
+      fail = false;
+      await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      expect(await screen.findByRole('heading', { level: 1, name: 'Tic-tac-toe' })).toBeTruthy();
+      expect(api.reclaimHostSeat).toHaveBeenCalledTimes(2);
+    });
+
     it('frees a guest seat after confirming', async () => {
       const { api } = await setup({ lobbyResult: async () => bothSeated() });
       await userEvent.click(await screen.findByRole('button', { name: 'Free seat 2 (Mara)' }));
@@ -218,7 +263,9 @@ describe('WaitingRoomPage', () => {
         TestBed.inject(ToastService)
           .toasts()
           .map((t) => t.message),
-      ).toContain('The room couldn’t be closed. Try again.');
+      ).toContain(
+        'The room couldn’t be closed. Can’t reach board·table. Check your connection; if the site was asleep it can take a minute to wake up.',
+      );
       const calls = api.lobby.mock.calls.length;
       document.dispatchEvent(new Event('visibilitychange'));
       await vi.waitFor(() => expect(api.lobby.mock.calls.length).toBeGreaterThan(calls));
@@ -256,6 +303,11 @@ describe('WaitingRoomPage', () => {
       await screen.findByRole('heading', { name: 'This table has been cleared' }),
     ).toBeTruthy();
     expect(TestBed.inject(SeatStore).seat(roomId)).toBeUndefined();
+    expect(
+      TestBed.inject(ToastService)
+        .toasts()
+        .map((t) => t.message),
+    ).toEqual(['This table no longer exists, or the link stopped working.']);
   });
 
   it('stops polling when leaving the page', async () => {

@@ -15,6 +15,7 @@ import { Router, RouterLink } from '@angular/router';
 import { getGameDefinition } from '@board-table/games';
 import { ApiClient, ApiError } from '../../core/api-client';
 import { AuthService } from '../../core/auth.service';
+import { ErrorService } from '../../core/error.service';
 import { SeatStore } from '../../core/seat-store';
 import { describeGameOver } from '../../game-kit/describe-game-over';
 import { PlayerStripComponent } from '../../game-kit/player-strip.component';
@@ -195,6 +196,7 @@ export class PlayPage implements OnInit {
   private readonly router = inject(Router);
   private readonly boards = inject(GAME_BOARDS);
   private readonly createSession = inject(GAME_SESSION_FACTORY);
+  private readonly errors = inject(ErrorService);
 
   protected readonly state = signal<State>('loading');
   protected readonly session = signal<Session | null>(null);
@@ -254,6 +256,7 @@ export class PlayPage implements OnInit {
       lobby = await this.api.lobby(roomId, seat.credentials);
     } catch (e) {
       this.state.set(e instanceof ApiError && e.code === 'not_found' ? 'gone' : 'offline');
+      this.errors.report(e, { context: 'The table couldn’t be loaded.' });
       return;
     }
     if (lobby.status === 'waiting' || lobby.you.playerID === undefined) {
@@ -265,6 +268,15 @@ export class PlayPage implements OnInit {
     const loadBoard = this.boards[lobby.gameId];
     if (!definition || !loadBoard) {
       this.state.set('unsupported');
+      return;
+    }
+    // The board's code first (lazy chunk), so a failed load leaves no half-started session.
+    let board;
+    try {
+      board = await loadBoard();
+    } catch (e) {
+      this.state.set('offline');
+      this.errors.report(e, { context: 'The game board couldn’t be loaded.' });
       return;
     }
 
@@ -283,8 +295,8 @@ export class PlayPage implements OnInit {
     });
     session.start();
     this.session.set(session);
+    this.board.set(board);
     this.state.set('playing');
-    this.board.set(await loadBoard());
   }
 
   /**
@@ -324,7 +336,9 @@ export class PlayPage implements OnInit {
         this.session()?.stop();
         this.seatStore.forget(this.roomId());
         this.state.set('gone');
+        this.errors.report(e);
       }
+      // anything else (e.g. offline): keep showing "Reconnecting…" while the socket retries
     }
   }
 }

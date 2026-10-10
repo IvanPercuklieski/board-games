@@ -1,5 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { Router } from '@angular/router';
+import { ApiError } from '../../core/api-client';
+import { asyncAction } from '../../core/async-action';
 import { AuthService } from '../../core/auth.service';
 import { ButtonComponent } from '../../ui/button/button.component';
 import { CardComponent } from '../../ui/card/card.component';
@@ -54,7 +56,7 @@ export function safeNextUrl(next: string | undefined): string {
             />
           </bt-text-field>
 
-          <button bt-button type="submit" size="lg" [loading]="busy()">Log in</button>
+          <button bt-button type="submit" size="lg" [loading]="loginAction.busy()">Log in</button>
         </form>
       </bt-card>
 
@@ -116,7 +118,6 @@ export class LoginPage {
   protected readonly email = signal('');
   protected readonly password = signal('');
   protected readonly showErrors = signal(false);
-  protected readonly busy = signal(false);
   protected readonly failure = signal<string | null>(null);
 
   protected readonly emailError = computed(() =>
@@ -130,24 +131,29 @@ export class LoginPage {
     return (event.target as HTMLInputElement).value;
   }
 
+  protected readonly loginAction = asyncAction(
+    async (email: string, password: string) => {
+      const result = await this.auth.signIn(email, password);
+      if (result === 'ok') {
+        await this.router.navigateByUrl(safeNextUrl(this.next()));
+        return;
+      }
+      // the form explains it; anything but wrong credentials is also reported (toast + log)
+      if (result === 'invalid_credentials') {
+        this.failure.set('That email or password is wrong.');
+        return;
+      }
+      this.failure.set('Logging in didn’t work just now. Please try again.');
+      throw result === 'network' ? new ApiError('network', 0) : new Error('Sign-in failed');
+    },
+    { context: 'Logging in didn’t work.' },
+  );
+
   protected async submit(event: Event) {
     event.preventDefault();
     this.showErrors.set(true);
     this.failure.set(null);
-    if (this.emailError() || this.passwordError() || this.busy()) return;
-
-    this.busy.set(true);
-    const result = await this.auth.signIn(this.email().trim(), this.password());
-    this.busy.set(false);
-
-    if (result === 'ok') {
-      await this.router.navigateByUrl(safeNextUrl(this.next()));
-    } else {
-      this.failure.set(
-        result === 'invalid_credentials'
-          ? 'That email or password is wrong.'
-          : 'Logging in didn’t work just now. Please try again.',
-      );
-    }
+    if (this.emailError() || this.passwordError()) return;
+    await this.loginAction.run(this.email().trim(), this.password());
   }
 }

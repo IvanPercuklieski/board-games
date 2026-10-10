@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { AuthRetryableFetchError } from '@supabase/auth-js';
 import { AuthService, SUPABASE_AUTH, type SupabaseAuth } from './auth.service';
 
 type Listener = (event: string, session: FakeSession | null) => void;
@@ -69,6 +70,25 @@ describe('AuthService', () => {
   it('reports wrong credentials without throwing', async () => {
     const { service } = await setup();
     await expect(service.signIn('ivan@example.com', 'wrong')).resolves.toBe('invalid_credentials');
+    expect(service.isSignedIn()).toBe(false);
+  });
+
+  it('tells a network failure apart from other errors', async () => {
+    const { service, mocks } = await setup();
+    mocks.signInWithPassword.mockResolvedValueOnce({
+      data: { session: null },
+      error: new AuthRetryableFetchError('Failed to fetch', 0),
+    } as never); // the fake's declared return type only knows the invalid-credentials error
+    await expect(service.signIn('ivan@example.com', 'right')).resolves.toBe('network');
+  });
+
+  it('signs out on this device even when the server can’t be reached', async () => {
+    const { service, mocks } = await setup(session());
+    mocks.signOut.mockResolvedValueOnce({
+      error: new AuthRetryableFetchError('Failed to fetch', 0),
+    } as never); // the fake's declared return type has no error
+    await service.signOut();
+    expect(mocks.signOut).toHaveBeenLastCalledWith({ scope: 'local' });
     expect(service.isSignedIn()).toBe(false);
   });
 

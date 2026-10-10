@@ -1,5 +1,6 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import type { GameCatalogEntry } from '@board-table/games/catalog';
 import type { RoomSummary } from '@board-table/shared';
 import { render, screen, within } from '@testing-library/angular';
@@ -48,6 +49,7 @@ async function setup(updateRoom = vi.fn(async () => summary())) {
   const data: ChangeGameData = { roomId, gameId: 'tictactoe', maxSeats: 2, seated: 2, games };
   await render(ChangeGameDialogComponent, {
     providers: [
+      provideRouter([]),
       { provide: DIALOG_DATA, useValue: data },
       { provide: DialogRef, useValue: { close } },
       { provide: ApiClient, useValue: { updateRoom } },
@@ -121,7 +123,7 @@ describe('ChangeGameDialogComponent', () => {
     await userEvent.click(screen.getByRole('radio', { name: /Party/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(toastMessages()).toContain(
-      'Too many players are seated for that game. Free a seat first.',
+      'The game couldn’t be changed. Too many players are seated for that game. Free a seat first.',
     );
     expect(close).not.toHaveBeenCalled();
   });
