@@ -1,7 +1,7 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RunningApp } from './app';
 import { createSeatedMatch } from './testing/matches';
 import { startTestApp } from './testing/app';
@@ -201,6 +201,52 @@ describe('socket security', () => {
     await sleep(300);
     expect(received).not.toContain('sync');
     expect((await db.fetch(matchID, { state: true })).state.G.cells[4]).toBeNull();
+  });
+
+  it('keeps a move sent right after sync, even while the seat check is still reading the DB', async () => {
+    const { url, db } = await start();
+    const { matchID, seats } = await createSeatedMatch(db, ['Alice', 'Bob']);
+    const alice = seats[0]!;
+    const fetch = db.fetch.bind(db);
+    vi.spyOn(db, 'fetch').mockImplementation(async (id, opts) => {
+      await sleep(100); // a real database round trip
+      return fetch(id, opts);
+    });
+    const { socket } = await attacker(url);
+    socket.emit('sync', matchID, '0', alice.credentials, 2);
+    socket.emit(
+      'update',
+      makeMoveAction('clickCell', [4], '0', alice.credentials),
+      0,
+      matchID,
+      '0',
+    );
+    await eventually(async () =>
+      expect((await fetch(matchID, { state: true })).state.G.cells[4]).toBe('0'),
+    );
+  });
+
+  it('drops packets beyond a small per-socket backlog while a seat check is pending', async () => {
+    const { url, db } = await start();
+    const { matchID, seats } = await createSeatedMatch(db, ['Alice', 'Bob']);
+    const alice = seats[0]!;
+    const fetch = db.fetch.bind(db);
+    vi.spyOn(db, 'fetch').mockImplementation(async (id, opts) => {
+      await sleep(100);
+      return fetch(id, opts);
+    });
+    const { socket } = await attacker(url);
+    socket.emit('sync', matchID, '0', alice.credentials, 2);
+    for (let i = 0; i < 20; i++) socket.emit('chat', matchID, { id: String(i), sender: '0' });
+    socket.emit(
+      'update',
+      makeMoveAction('clickCell', [4], '0', alice.credentials),
+      0,
+      matchID,
+      '0',
+    );
+    await sleep(500);
+    expect((await fetch(matchID, { state: true })).state.G.cells[4]).toBeNull();
   });
 
   it('rejects moves with wrong credentials or for an unclaimed seat', async () => {
