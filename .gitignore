@@ -28,3 +28,7 @@ Thumbs.db
 # Private project docs (kept local for now)
 /CLAUDE.md
 /DOCUMENTATION.md
+
+# Storybook output
+*storybook.log
+storybook-static/
