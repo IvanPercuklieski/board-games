@@ -13,6 +13,9 @@ import {
   previewResponseSchema,
   publicConfigSchema,
   roomIdSchema,
+  roomSocketAuthSchema,
+  ROOM_NAMESPACE,
+  gameIdSchema,
   secretSchema,
 } from './api';
 import { LIMITS } from './limits';
@@ -112,9 +115,26 @@ describe('request schemas', () => {
 
 describe('response schemas', () => {
   const seats = [
-    { seatIndex: 0, name: 'Alice', isHost: true },
-    { seatIndex: 1, name: 'Bob', isHost: false },
+    { seatIndex: 0, name: 'Alice', isHost: true, away: false },
+    { seatIndex: 1, name: 'Bob', isHost: false, away: true },
   ];
+
+  it('requires the away flag on seats', () => {
+    expect(
+      listRoomsResponseSchema.safeParse({
+        rooms: [
+          {
+            roomId,
+            gameId: 'tictactoe',
+            status: 'waiting',
+            maxSeats: 2,
+            seats: [{ seatIndex: 0, name: 'Alice', isHost: true }],
+            createdAt: '2026-10-10T12:00:00.000Z',
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
 
   it('parses a create-room response', () => {
     const body = {
@@ -167,11 +187,15 @@ describe('response schemas', () => {
       status: 'waiting',
       maxSeats: 2,
       seats,
-      you: { seatIndex: 1 },
+      you: { seatIndex: 1, isHost: false },
     };
     expect(lobbyResponseSchema.parse(waiting)).toEqual(waiting);
 
-    const playing = { ...waiting, status: 'playing', you: { seatIndex: 1, playerID: '1' } };
+    const playing = {
+      ...waiting,
+      status: 'playing',
+      you: { seatIndex: 1, isHost: false, playerID: '1' },
+    };
     expect(lobbyResponseSchema.parse(playing)).toEqual(playing);
   });
 
@@ -183,7 +207,7 @@ describe('response schemas', () => {
         status: 'finished',
         maxSeats: 2,
         seats,
-        you: { seatIndex: 0 },
+        you: { seatIndex: 0, isHost: true },
       }).success,
     ).toBe(false);
   });
@@ -213,6 +237,7 @@ describe('apiErrorSchema', () => {
     'room_locked',
     'too_many_players',
     'limit_reached',
+    'players_away',
     'validation_error',
     'rate_limited',
     'internal_error',
@@ -222,5 +247,26 @@ describe('apiErrorSchema', () => {
 
   it('rejects unknown error codes', () => {
     expect(apiErrorSchema.safeParse({ error: 'oops' }).success).toBe(false);
+  });
+});
+
+describe('room socket contract', () => {
+  it('uses a namespace no game id can take', () => {
+    expect(gameIdSchema.safeParse(ROOM_NAMESPACE.slice(1)).success).toBe(false);
+  });
+
+  it('parses the handshake auth payload', () => {
+    const auth = { roomId, credentials: secret };
+    expect(roomSocketAuthSchema.parse(auth)).toEqual(auth);
+  });
+
+  it.each([
+    {},
+    { roomId },
+    { roomId, credentials: 'short' },
+    { roomId: '../x', credentials: secret },
+    { roomId, credentials: secret, extra: 1 },
+  ])('rejects handshake auth %j', (auth) => {
+    expect(roomSocketAuthSchema.safeParse(auth).success).toBe(false);
   });
 });

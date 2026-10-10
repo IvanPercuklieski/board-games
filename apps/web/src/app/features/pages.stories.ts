@@ -24,7 +24,7 @@ const rooms: ListRoomsResponse = {
       gameId: 'tictactoe',
       status: 'waiting',
       maxSeats: 2,
-      seats: [{ seatIndex: 0, name: 'Ivan', isHost: true }],
+      seats: [{ seatIndex: 0, name: 'Ivan', isHost: true, away: false }],
       createdAt: new Date(Date.now() - 4 * 60_000).toISOString(),
     },
     {
@@ -33,8 +33,8 @@ const rooms: ListRoomsResponse = {
       status: 'playing',
       maxSeats: 2,
       seats: [
-        { seatIndex: 0, name: 'Ivan', isHost: true },
-        { seatIndex: 1, name: 'Mara Lind', isHost: false },
+        { seatIndex: 0, name: 'Ivan', isHost: true, away: false },
+        { seatIndex: 1, name: 'Mara Lind', isHost: false, away: false },
       ],
       createdAt: new Date(Date.now() - 2 * 3_600_000).toISOString(),
     },
@@ -99,10 +99,10 @@ const lobbyFor = (seatIndex: number) => ({
   status: 'waiting' as const,
   maxSeats: 2,
   seats: [
-    { seatIndex: 0, name: 'Ivan', isHost: true },
-    ...(seatIndex === 1 ? [{ seatIndex: 1, name: 'Mara Lind', isHost: false }] : []),
+    { seatIndex: 0, name: 'Ivan', isHost: true, away: false },
+    ...(seatIndex === 1 ? [{ seatIndex: 1, name: 'Mara Lind', isHost: false, away: false }] : []),
   ],
-  you: { seatIndex },
+  you: { seatIndex, isHost: seatIndex === 0 },
 });
 
 /** Seeds this browser's seat (and the host's invite link) before the page renders. */

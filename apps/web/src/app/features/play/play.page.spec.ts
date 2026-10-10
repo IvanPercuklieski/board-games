@@ -30,10 +30,10 @@ const lobby = (over: Partial<LobbyResponse> = {}): LobbyResponse => ({
   status: 'playing',
   maxSeats: 2,
   seats: [
-    { seatIndex: 0, name: 'Ivan', isHost: true },
-    { seatIndex: 1, name: 'Mara', isHost: false },
+    { seatIndex: 0, name: 'Ivan', isHost: true, away: false },
+    { seatIndex: 1, name: 'Mara', isHost: false, away: false },
   ],
-  you: { seatIndex: 1, playerID: '1' },
+  you: { seatIndex: 1, isHost: false, playerID: '1' },
   ...over,
 });
 
@@ -136,7 +136,7 @@ describe('PlayPage', () => {
   it('also offers the host a way back to the games', async () => {
     const { sessions } = await setup({
       seat: { seatIndex: 0, credentials: secret },
-      lobbyResult: async () => lobby({ you: { seatIndex: 0, playerID: '0' } }),
+      lobbyResult: async () => lobby({ you: { seatIndex: 0, isHost: true, playerID: '0' } }),
       signedIn: true,
     });
     await screen.findByText('Stub board for player 0');
@@ -238,7 +238,7 @@ describe('PlayPage', () => {
 
   it('sends players back to the waiting room before the game starts', async () => {
     const { navigate } = await setup({
-      lobbyResult: async () => lobby({ status: 'waiting', you: { seatIndex: 1 } }),
+      lobbyResult: async () => lobby({ status: 'waiting', you: { seatIndex: 1, isHost: false } }),
     });
     await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith(`/rooms/${roomId}`));
   });

@@ -189,9 +189,10 @@ export class RoomsService {
       gameId: room.gameId,
       status: room.status,
       maxSeats: room.maxSeats,
-      seats: (await this.repo.listSeats(roomId)).map(toSeatInfo),
+      seats: (await this.repo.listSeats(roomId)).map((seat) => toSeatInfo(room, seat)),
       you: {
         seatIndex: you.seatIndex,
+        isHost: you.userId === room.hostUserId,
         ...(room.status === 'playing' && { playerID: String(you.seatIndex) }),
       },
     };
@@ -214,7 +215,7 @@ export class RoomsService {
       gameId: room.gameId,
       status: room.status,
       maxSeats: room.maxSeats,
-      seats: (await this.repo.listSeats(room.id)).map(toSeatInfo),
+      seats: (await this.repo.listSeats(room.id)).map((seat) => toSeatInfo(room, seat)),
       createdAt: room.createdAt.toISOString(),
     };
   }
@@ -238,10 +239,11 @@ export class RoomsService {
   }
 }
 
-const toSeatInfo = (seat: SeatRecord): SeatInfo => ({
+const toSeatInfo = (room: RoomRecord, seat: SeatRecord): SeatInfo => ({
   seatIndex: seat.seatIndex,
   name: seat.name,
-  isHost: seat.userId !== null,
+  isHost: seat.userId === room.hostUserId,
+  away: false,
 });
 
 /** Profile display names may be longer than seat names; cut by characters, not UTF-16 units. */

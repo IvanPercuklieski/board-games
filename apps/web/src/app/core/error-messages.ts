@@ -11,6 +11,7 @@ const MESSAGES: Record<ApiErrorCode | 'network', string> = {
   room_locked: 'The game has already started.',
   room_full: 'Every seat at this table is taken.',
   too_many_players: 'Too many players are seated for that game. Free a seat first.',
+  players_away: 'Someone at the table is away. Wait for them to come back, or free their seat.',
   limit_reached: `You already have ${LIMITS.maxActiveRoomsPerHost} open rooms. Close one first.`,
   not_found: 'This table no longer exists, or the link stopped working.',
   invalid_invite: 'This table no longer exists, or the link stopped working.',

@@ -62,8 +62,8 @@ describe('ApiClient', () => {
       gameId: 'tictactoe',
       status: 'waiting',
       maxSeats: 2,
-      seats: [{ seatIndex: 0, name: 'Ivan', isHost: true }],
-      you: { seatIndex: 0 },
+      seats: [{ seatIndex: 0, name: 'Ivan', isHost: true, away: false }],
+      you: { seatIndex: 0, isHost: true },
     });
     await expect(result).resolves.toMatchObject({ status: 'waiting' });
   });

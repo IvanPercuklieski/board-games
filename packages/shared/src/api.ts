@@ -31,6 +31,8 @@ export const seatInfoSchema = z.object({
   seatIndex: seatIndexSchema,
   name: z.string(),
   isHost: z.boolean(),
+  /** No lobby poll from this seat for a while (see PRESENCE); the host can't start meanwhile. */
+  away: z.boolean(),
 });
 
 // --- requests (strict: unknown fields are rejected) -----------------------------
@@ -103,9 +105,32 @@ export const lobbyResponseSchema = z.object({
   seats: z.array(seatInfoSchema),
   you: z.object({
     seatIndex: seatIndexSchema,
+    isHost: z.boolean(),
     /** boardgame.io playerID, present once the game has started. */
     playerID: z.optional(z.string()),
   }),
+});
+
+// --- room connection (socket.io, server -> browser only) -------------------------------
+
+/**
+ * Namespace of the live room connection. Game namespaces are `/<gameId>` and game ids start
+ * with [a-z0-9], so this can never clash with a game.
+ */
+export const ROOM_NAMESPACE = '/_room';
+
+/** Events the server sends on the room connection; the browser sends none. */
+export const ROOM_EVENTS = {
+  /** A full LobbyResponse snapshot, on connect and after every change. */
+  lobby: 'lobby',
+  /** The room is gone or this seat was freed/reissued; the server disconnects afterwards. */
+  closed: 'closed',
+} as const;
+
+/** The socket.io handshake `auth` payload (never in the URL). */
+export const roomSocketAuthSchema = z.strictObject({
+  roomId: roomIdSchema,
+  credentials: secretSchema,
 });
 
 /** Public values the web app needs to log in (served by GET /api/config). */
@@ -123,6 +148,7 @@ export const apiErrorCodeSchema = z.enum([
   'room_locked',
   'too_many_players',
   'limit_reached',
+  'players_away',
   'validation_error',
   'rate_limited',
   'internal_error',
@@ -153,6 +179,7 @@ export type PreviewResponse = z.infer<typeof previewResponseSchema>;
 export type JoinRequest = z.infer<typeof joinRequestSchema>;
 export type JoinResponse = z.infer<typeof joinResponseSchema>;
 export type LobbyResponse = z.infer<typeof lobbyResponseSchema>;
+export type RoomSocketAuth = z.infer<typeof roomSocketAuthSchema>;
 export type PublicConfig = z.infer<typeof publicConfigSchema>;
 export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>;
 export type ApiError = z.infer<typeof apiErrorSchema>;

@@ -132,8 +132,8 @@ describe('listRooms', () => {
       status: 'waiting',
       maxSeats: 2,
       seats: [
-        { seatIndex: 0, name: 'Alice', isHost: true },
-        { seatIndex: 1, name: 'Bob', isHost: false },
+        { seatIndex: 0, name: 'Alice', isHost: true, away: false },
+        { seatIndex: 1, name: 'Bob', isHost: false, away: false },
       ],
     });
   });
@@ -300,6 +300,7 @@ describe('host-only actions', () => {
     expect(carol.seatIndex).toBe(1);
     expect((await service.lobby(room.roomId, carol.credentials)).you).toEqual({
       seatIndex: 1,
+      isHost: false,
       playerID: '1',
     });
   });
@@ -352,15 +353,15 @@ describe('lobby', () => {
       status: 'waiting',
       maxSeats: 2,
       seats: [
-        { seatIndex: 0, name: 'Alice', isHost: true },
-        { seatIndex: 1, name: 'Bob', isHost: false },
+        { seatIndex: 0, name: 'Alice', isHost: true, away: false },
+        { seatIndex: 1, name: 'Bob', isHost: false, away: false },
       ],
-      you: { seatIndex: 1 },
+      you: { seatIndex: 1, isHost: false },
     });
 
     await service.start(alice, room.roomId);
     const playing = await service.lobby(room.roomId, room.seat.credentials);
-    expect(playing).toMatchObject({ status: 'playing', you: { seatIndex: 0, playerID: '0' } });
+    expect(playing).toMatchObject({ status: 'playing', you: { seatIndex: 0, isHost: true, playerID: '0' } });
   });
 
   it('answers not_found for unknown credentials or another room', async () => {

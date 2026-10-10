@@ -22,16 +22,16 @@ const lobby = (over: Partial<LobbyResponse> = {}): LobbyResponse => ({
   gameId: 'tictactoe',
   status: 'waiting',
   maxSeats: 2,
-  seats: [{ seatIndex: 0, name: 'Ivan', isHost: true }],
-  you: { seatIndex: 0 },
+  seats: [{ seatIndex: 0, name: 'Ivan', isHost: true, away: false }],
+  you: { seatIndex: 0, isHost: true },
   ...over,
 });
 
 const bothSeated = (over: Partial<LobbyResponse> = {}) =>
   lobby({
     seats: [
-      { seatIndex: 0, name: 'Ivan', isHost: true },
-      { seatIndex: 1, name: 'Mara', isHost: false },
+      { seatIndex: 0, name: 'Ivan', isHost: true, away: false },
+      { seatIndex: 1, name: 'Mara', isHost: false, away: false },
     ],
     ...over,
   });
@@ -94,7 +94,7 @@ describe('WaitingRoomPage', () => {
       seat: { seatIndex: 1, credentials: guestSecret },
       signedIn: false,
       invite: null,
-      lobbyResult: async () => bothSeated({ you: { seatIndex: 1 } }),
+      lobbyResult: async () => bothSeated({ you: { seatIndex: 1, isHost: false } }),
     };
 
     it('shows the table and waits for the host', async () => {
@@ -152,7 +152,7 @@ describe('WaitingRoomPage', () => {
         lobbyResult: async () =>
           bothSeated({
             status,
-            you: { seatIndex: 0, ...(status === 'playing' && { playerID: '0' }) },
+            you: { seatIndex: 0, isHost: true, ...(status === 'playing' && { playerID: '0' }) },
           }),
       });
       api.startRoom.mockImplementation(async () => {
@@ -285,7 +285,7 @@ describe('WaitingRoomPage', () => {
   it('goes to the table once the game has started', async () => {
     const { navigate } = await setup({
       lobbyResult: async () =>
-        bothSeated({ status: 'playing', you: { seatIndex: 0, playerID: '0' } }),
+        bothSeated({ status: 'playing', you: { seatIndex: 0, isHost: true, playerID: '0' } }),
     });
     await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith(`/rooms/${roomId}/play`));
   });

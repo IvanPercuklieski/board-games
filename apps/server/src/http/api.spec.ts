@@ -216,7 +216,7 @@ describe('rooms flow', () => {
     });
     expect(lobbyResponseSchema.parse(await lobby.json())).toMatchObject({
       status: 'waiting',
-      you: { seatIndex: 1 },
+      you: { seatIndex: 1, isHost: false },
     });
 
     const list = await api(c.url, '/api/rooms', { headers: bearer(c.aliceToken) });
@@ -235,7 +235,7 @@ describe('rooms flow', () => {
         })
       ).json(),
     );
-    expect(bobLobby.you).toEqual({ seatIndex: 1, playerID: '1' });
+    expect(bobLobby.you).toEqual({ seatIndex: 1, isHost: false, playerID: '1' });
 
     const alice = connectPlayer(c.url, room.roomId, {
       playerID: '0',
@@ -268,7 +268,7 @@ describe('rooms flow', () => {
       });
       expect(lobbyResponseSchema.parse(await after.json())).toMatchObject({
         status: 'waiting',
-        you: { seatIndex: 1 },
+        you: { seatIndex: 1, isHost: false },
       });
       // ...while the players still have the final board.
       expect(bob.getState()!.G.cells.slice(0, 3)).toEqual(['0', '0', '0']);

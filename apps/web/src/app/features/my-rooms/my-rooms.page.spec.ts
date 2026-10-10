@@ -23,7 +23,7 @@ const rooms: ListRoomsResponse = {
       gameId: 'tictactoe',
       status: 'waiting',
       maxSeats: 2,
-      seats: [{ seatIndex: 0, name: 'Ivan', isHost: true }],
+      seats: [{ seatIndex: 0, name: 'Ivan', isHost: true, away: false }],
       createdAt: new Date().toISOString(),
     },
     {
@@ -32,8 +32,8 @@ const rooms: ListRoomsResponse = {
       status: 'playing',
       maxSeats: 2,
       seats: [
-        { seatIndex: 0, name: 'Ivan', isHost: true },
-        { seatIndex: 1, name: 'Mara', isHost: false },
+        { seatIndex: 0, name: 'Ivan', isHost: true, away: false },
+        { seatIndex: 1, name: 'Mara', isHost: false, away: false },
       ],
       createdAt: new Date().toISOString(),
     },

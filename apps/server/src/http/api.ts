@@ -37,6 +37,7 @@ const STATUS: Record<ApiErrorCode, number> = {
   room_locked: 409,
   too_many_players: 409,
   limit_reached: 409,
+  players_away: 409,
   validation_error: 400,
   rate_limited: 429,
   internal_error: 500,
