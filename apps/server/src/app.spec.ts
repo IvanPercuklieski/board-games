@@ -72,6 +72,30 @@ describe('HTTP', () => {
     expect(res.headers.get('referrer-policy')).toBe('no-referrer');
   });
 
+  it('sends a strict Content-Security-Policy', async () => {
+    const { url } = await start();
+    const csp = (await fetch(`${url}/healthz`)).headers.get('content-security-policy') ?? '';
+    const directives = Object.fromEntries(
+      csp.split(';').map((d) => {
+        const [name, ...values] = d.trim().split(/\s+/);
+        return [name, values];
+      }),
+    );
+    expect(directives['default-src']).toEqual(["'self'"]);
+    expect(directives['script-src']).toEqual(["'self'"]);
+    expect(directives['object-src']).toEqual(["'none'"]);
+    expect(directives['frame-ancestors']).toEqual(["'none'"]);
+    expect(directives['base-uri']).toEqual(["'self'"]);
+    // the web app talks only to us (API + websockets) and to Supabase for login
+    expect(directives['connect-src']).toEqual([
+      "'self'",
+      'ws://localhost:4200',
+      'https://abc.supabase.co',
+    ]);
+    expect(directives['img-src']).toEqual(["'self'", 'data:']);
+    expect(directives['font-src']).toEqual(["'self'"]);
+  });
+
   it('serves the built web app with SPA fallback', async () => {
     const { url } = await start({ webDistDir: makeWebDist() });
 

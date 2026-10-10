@@ -91,7 +91,7 @@ export function createApp({ config, deps }: { config: ServerConfig; deps?: AppDe
       limiter.start();
       lifecycle.start();
 
-      server.app.use(securityHeaders);
+      server.app.use(securityHeaders(config));
       server.app.use(healthCheck);
       server.app.use(
         apiMiddleware({
@@ -138,11 +138,36 @@ export function createApp({ config, deps }: { config: ServerConfig; deps?: AppDe
   };
 }
 
-const securityHeaders: Middleware = async (ctx, next) => {
-  ctx.set('X-Content-Type-Options', 'nosniff');
-  ctx.set('X-Frame-Options', 'DENY');
-  ctx.set('Referrer-Policy', 'no-referrer');
-  await next();
+/**
+ * Strict CSP: only our own scripts; network access only to us (API + websockets) and to
+ * Supabase for login. Inline styles are allowed because Angular inlines component styles.
+ * This limits what injected script could do (e.g. steal seat secrets from localStorage).
+ */
+function contentSecurityPolicy({ publicOrigin, supabaseUrl }: ServerConfig): string {
+  const websocketOrigin = publicOrigin.replace(/^http/, 'ws');
+  return [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "font-src 'self'",
+    `connect-src 'self' ${websocketOrigin} ${supabaseUrl}`,
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join('; ');
+}
+
+const securityHeaders = (config: ServerConfig): Middleware => {
+  const csp = contentSecurityPolicy(config);
+  return async (ctx, next) => {
+    ctx.set('Content-Security-Policy', csp);
+    ctx.set('X-Content-Type-Options', 'nosniff');
+    ctx.set('X-Frame-Options', 'DENY');
+    ctx.set('Referrer-Policy', 'no-referrer');
+    await next();
+  };
 };
 
 const healthCheck: Middleware = async (ctx, next) => {

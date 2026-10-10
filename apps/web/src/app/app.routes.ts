@@ -17,6 +17,20 @@ export const routes: Routes = [
     loadComponent: () => import('./features/catalog/catalog.page').then((m) => m.CatalogPage),
   },
   {
+    path: 'games/:gameId',
+    title: 'Game · board·table',
+    canActivate: [hostOnly],
+    loadComponent: () =>
+      import('./features/game-detail/game-detail.page').then((m) => m.GameDetailPage),
+  },
+  {
+    path: 'rooms',
+    pathMatch: 'full',
+    title: 'My rooms · board·table',
+    canActivate: [hostOnly],
+    loadComponent: () => import('./features/my-rooms/my-rooms.page').then((m) => m.MyRoomsPage),
+  },
+  {
     path: '**',
     title: 'Not found · board·table',
     loadComponent: () => import('./features/not-found/not-found.page').then((m) => m.NotFoundPage),
