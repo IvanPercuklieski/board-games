@@ -11,6 +11,7 @@
   ],
   "scripts": {
     "test": "npm test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
     "dev:web": "npm run start -w @board-table/web",
     "build:web": "npm run build -w @board-table/web",
     "test:web": "npm test -w @board-table/web",
