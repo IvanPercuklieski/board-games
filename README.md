@@ -1,7 +1,7 @@
 # board-table
 
 Private, invite-only site for playing board games online with friends.
-See [CLAUDE.md](CLAUDE.md) for the project overview, structure and rules.
+See [CLAUDE.md](CLAUDE.md) for project rules and [DOCUMENTATION.md](DOCUMENTATION.md) for setup, scripts and current state.
 
 ## Requirements
 
