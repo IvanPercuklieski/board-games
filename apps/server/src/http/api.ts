@@ -6,11 +6,12 @@ import {
   SEAT_CREDENTIALS_HEADER,
   secretSchema,
   type ApiErrorCode,
+  type Infer,
   type PublicConfig,
+  type Schema,
 } from '@board-table/shared';
 import type { IncomingMessage } from 'node:http';
 import type { Context, Middleware } from 'koa';
-import type { z } from 'zod';
 import { AuthError, bearerToken, type AccessTokenVerifier } from '../auth/access-token';
 import { ApiFailure, type RoomsService } from '../rooms/rooms-service';
 import type { RateLimiter } from './rate-limiter';
@@ -177,7 +178,7 @@ function rateLimit(limiter: RateLimiter, key: string, { limit, windowMs }: typeo
   if (!result.allowed) throw new RateLimited(result.retryAfterSeconds);
 }
 
-async function readJson<T extends z.ZodType>(ctx: Context, schema: T): Promise<z.infer<T>> {
+async function readJson<T extends Schema>(ctx: Context, schema: T): Promise<Infer<T>> {
   if (!ctx.is('application/json')) throw new ApiFailure('validation_error');
   const raw = await readBody(ctx.req, MAX_BODY_BYTES);
   let data: unknown;

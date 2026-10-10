@@ -1,0 +1,51 @@
+import { TestBed } from '@angular/core/testing';
+import { SeatStore } from './seat-store';
+
+const roomId = 'AbCdEfGhIjKlMnOpQrSt_-';
+const credentials = 'A'.repeat(43);
+
+describe('SeatStore', () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('remembers the seat for a room', () => {
+    const store = TestBed.inject(SeatStore);
+    store.saveSeat(roomId, { seatIndex: 1, credentials });
+    expect(store.seat(roomId)).toEqual({ seatIndex: 1, credentials });
+    expect(store.seat('BbCdEfGhIjKlMnOpQrSt_-')).toBeUndefined();
+  });
+
+  it('ignores corrupted or tampered entries', () => {
+    localStorage.setItem(`bt-seat:${roomId}`, '{"seatIndex":"x"}');
+    expect(TestBed.inject(SeatStore).seat(roomId)).toBeUndefined();
+    localStorage.setItem(`bt-seat:${roomId}`, 'not json');
+    expect(TestBed.inject(SeatStore).seat(roomId)).toBeUndefined();
+  });
+
+  it("remembers the host's latest invite link", () => {
+    const store = TestBed.inject(SeatStore);
+    store.saveInviteUrl(roomId, 'https://x.test/join/abc#t=1');
+    expect(store.inviteUrl(roomId)).toBe('https://x.test/join/abc#t=1');
+  });
+
+  it('forgets everything about a room', () => {
+    const store = TestBed.inject(SeatStore);
+    store.saveSeat(roomId, { seatIndex: 0, credentials });
+    store.saveInviteUrl(roomId, 'https://x.test/join/abc#t=1');
+    store.forget(roomId);
+    expect(store.seat(roomId)).toBeUndefined();
+    expect(store.inviteUrl(roomId)).toBeUndefined();
+  });
+
+  it('works (without remembering) when storage is blocked', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    const store = TestBed.inject(SeatStore);
+    expect(() => store.saveSeat(roomId, { seatIndex: 0, credentials })).not.toThrow();
+    expect(store.seat(roomId)).toBeUndefined();
+  });
+});

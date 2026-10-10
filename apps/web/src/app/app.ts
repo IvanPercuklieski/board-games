@@ -1,10 +1,10 @@
-import { Component } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ShellComponent } from './shell/shell.component';
 
 @Component({
-  imports: [RouterOutlet],
   selector: 'app-root',
-  styleUrl: './app.scss',
-  templateUrl: './app.html',
+  imports: [ShellComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `<bt-shell />`,
 })
 export class App {}
