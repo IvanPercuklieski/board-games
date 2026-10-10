@@ -7,16 +7,21 @@ import { IconButtonComponent } from '../ui/button/icon-button.component';
 import type { IconName } from '../ui/icon/icons';
 import { ThemeService, type ThemeMode } from '../ui/theme/theme.service';
 import { ToastOutletComponent } from '../ui/toast/toast-outlet.component';
+import { NavigationProgressComponent } from './navigation-progress.component';
 
 const NEXT_MODE: Record<ThemeMode, ThemeMode> = { system: 'light', light: 'dark', dark: 'system' };
 const MODE_ICON: Record<ThemeMode, IconName> = { system: 'desktop', light: 'sun', dark: 'moon' };
 
-/** Page frame: skip link, header (wordmark, host navigation, colour mode, user), toasts. */
+/**
+ * Page frame: page-change progress bar, skip link, header (wordmark, host navigation, colour
+ * mode, user), toasts.
+ */
 @Component({
   selector: 'bt-shell',
   imports: [
     ButtonComponent,
     IconButtonComponent,
+    NavigationProgressComponent,
     RouterLink,
     RouterLinkActive,
     RouterOutlet,
@@ -24,6 +29,7 @@ const MODE_ICON: Record<ThemeMode, IconName> = { system: 'desktop', light: 'sun'
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+    <bt-navigation-progress />
     <a class="skip" href="#main">Skip to content</a>
 
     <header class="header">

@@ -7,4 +7,5 @@
 @use 'app/ui/styles/tokens';
 @use 'app/ui/styles/base';
 @use 'app/ui/styles/forms';
+@use 'app/ui/styles/boot';
 @use '@angular/cdk/overlay-prebuilt.css' as cdk-overlay;

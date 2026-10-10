@@ -1,0 +1,43 @@
+// Startup screen in index.html (before Angular runs) and its "couldn't start" variant
+// (core/startup-error.ts). Global because no component exists yet.
+
+.bt-boot {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--bt-space-3);
+  min-height: 100dvh;
+  padding: var(--bt-space-6);
+  text-align: center;
+  color: var(--bt-color-text-muted);
+  font-family: var(--bt-font-sans);
+
+  h1,
+  .bt-boot__wordmark {
+    margin: 0;
+    color: var(--bt-color-text);
+    font-family: var(--bt-font-display);
+    font-size: var(--bt-text-2xl);
+  }
+
+  p {
+    margin: 0;
+    max-width: 28rem;
+  }
+}
+
+.bt-boot__retry {
+  margin-top: var(--bt-space-3);
+  padding: var(--bt-space-2) var(--bt-space-5);
+  border: 0;
+  border-radius: var(--bt-radius-md);
+  background: var(--bt-color-accent);
+  color: var(--bt-color-on-accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--bt-color-accent-hover);
+  }
+}

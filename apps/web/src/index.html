@@ -8,6 +8,12 @@
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
   </head>
   <body>
-    <app-root></app-root>
+    <app-root>
+      <!-- shown until the app starts; main.ts replaces it if starting fails -->
+      <main class="bt-boot" aria-busy="true">
+        <p class="bt-boot__wordmark">board·table</p>
+        <p role="status">Loading board·table…</p>
+      </main>
+    </app-root>
   </body>
 </html>
