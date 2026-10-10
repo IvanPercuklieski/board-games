@@ -14,7 +14,10 @@ export interface GameBoard<G = unknown> {
 export type BoardLoader = () => Promise<Type<unknown>>;
 
 /** Board components by game id, loaded only when that game is played. */
-const BOARDS: Record<string, BoardLoader> = {};
+const BOARDS: Record<string, BoardLoader> = {
+  tictactoe: () =>
+    import('./tictactoe/tictactoe-board.component').then((m) => m.TicTacToeBoardComponent),
+};
 
 export const GAME_BOARDS = new InjectionToken<Record<string, BoardLoader>>('GAME_BOARDS', {
   providedIn: 'root',

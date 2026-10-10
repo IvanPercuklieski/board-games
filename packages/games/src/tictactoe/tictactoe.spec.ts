@@ -76,3 +76,18 @@ describe('TicTacToe', () => {
     expect(client.getState()!.G.cells[8]).toBeNull();
   });
 });
+
+describe('findWinningLine', () => {
+  it('returns the three cells of a completed line', async () => {
+    const { findWinningLine } = await import('./tictactoe');
+    const cells = ['0', '0', '0', null, '1', '1', null, null, null];
+    expect(findWinningLine(cells)).toEqual([0, 1, 2]);
+    expect(findWinningLine([null, '1', null, null, '1', null, null, '1', null])).toEqual([1, 4, 7]);
+  });
+
+  it('returns null without a line', async () => {
+    const { findWinningLine } = await import('./tictactoe');
+    expect(findWinningLine(Array(9).fill(null))).toBeNull();
+    expect(findWinningLine(['0', '1', '0', '0', '1', '1', '1', '0', '0'])).toBeNull();
+  });
+});

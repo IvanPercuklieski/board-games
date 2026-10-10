@@ -17,11 +17,14 @@ const LINES = [
   [2, 4, 6],
 ] as const;
 
-function findWinner(cells: TicTacToeState['cells']): string | null {
-  for (const [a, b, c] of LINES) {
-    if (cells[a] !== null && cells[a] === cells[b] && cells[a] === cells[c]) return cells[a]!;
-  }
-  return null;
+/** The three cells of a completed line, or null. Used by the rules and by the board UI. */
+export function findWinningLine(
+  cells: TicTacToeState['cells'],
+): readonly [number, number, number] | null {
+  return (
+    LINES.find(([a, b, c]) => cells[a] != null && cells[a] === cells[b] && cells[a] === cells[c]) ??
+    null
+  );
 }
 
 export const TicTacToe: Game<TicTacToeState> = {
@@ -43,8 +46,8 @@ export const TicTacToe: Game<TicTacToeState> = {
   },
 
   endIf: ({ G }) => {
-    const winner = findWinner(G.cells);
-    if (winner !== null) return { winner };
+    const line = findWinningLine(G.cells);
+    if (line) return { winner: G.cells[line[0]]! };
     if (G.cells.every((c) => c !== null)) return { draw: true };
     return undefined;
   },
