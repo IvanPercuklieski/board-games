@@ -16,9 +16,13 @@
     "build:web": "npm run build -w @board-table/web",
     "test:web": "npm test -w @board-table/web",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "db:test:dev": "node scripts/db-dev.mjs test",
+    "db:push:dev": "node scripts/db-dev.mjs push"
   },
   "devDependencies": {
-    "prettier": "^3.9.10"
+    "postgres": "^3.4.9",
+    "prettier": "^3.9.10",
+    "supabase": "^2.120.0"
   }
 }
