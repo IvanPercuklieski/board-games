@@ -1,0 +1,142 @@
+// board-table design tokens ("Tabletop warm").
+// Colors live in two palette mixins (checked for WCAG AA by scripts/check-contrast.mjs).
+// Everything else is mode-independent.
+
+@mixin bt-light-palette {
+  color-scheme: light;
+  // surfaces: warm paper and linen
+  --bt-color-bg: #f3ece0;
+  --bt-color-surface: #fbf7f0;
+  --bt-color-surface-raised: #fffdf9;
+  --bt-color-surface-sunken: #e9e0d0;
+  --bt-color-border: #d8cbb4;
+  --bt-color-border-strong: #8f7e66;
+  // ink
+  --bt-color-text: #261f1a;
+  --bt-color-text-muted: #635547;
+  // felt green
+  --bt-color-accent: #2c5a46;
+  --bt-color-accent-hover: #234a39;
+  --bt-color-accent-subtle: #dbe6dd;
+  --bt-color-accent-text: #24503d;
+  --bt-color-on-accent: #fbf7f0;
+  // oxblood
+  --bt-color-danger: #8c2b2b;
+  --bt-color-danger-subtle: #f2dcd8;
+  --bt-color-danger-text: #7f2626;
+  --bt-color-on-danger: #fbf7f0;
+  // ochre
+  --bt-color-warning-subtle: #f3e3c0;
+  --bt-color-warning-text: #6b4610;
+  --bt-color-focus: #2c5a46;
+  --bt-shadow-color: 38 31 26;
+}
+
+@mixin bt-dark-palette {
+  color-scheme: dark;
+  // surfaces: walnut
+  --bt-color-bg: #1a1512;
+  --bt-color-surface: #241d18;
+  --bt-color-surface-raised: #2d251f;
+  --bt-color-surface-sunken: #14100d;
+  --bt-color-border: #3b3129;
+  --bt-color-border-strong: #8a7a68;
+  // parchment text
+  --bt-color-text: #efe6d8;
+  --bt-color-text-muted: #b5a691;
+  // felt green, lifted for dark backgrounds
+  --bt-color-accent: #7db497;
+  --bt-color-accent-hover: #93c4aa;
+  --bt-color-accent-subtle: #22362c;
+  --bt-color-accent-text: #8fc3a6;
+  --bt-color-on-accent: #0f1f17;
+  // oxblood, lifted
+  --bt-color-danger: #e0877e;
+  --bt-color-danger-subtle: #3a1f1c;
+  --bt-color-danger-text: #eb9a92;
+  --bt-color-on-danger: #2a0f0d;
+  // ochre
+  --bt-color-warning-subtle: #3a2c14;
+  --bt-color-warning-text: #e8c27e;
+  --bt-color-focus: #8fc3a6;
+  --bt-shadow-color: 0 0 0;
+}
+
+@mixin bt-static-tokens {
+  // type
+  --bt-font-display: 'Fraunces Variable', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --bt-font-sans: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  --bt-font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', monospace;
+  --bt-text-xs: 0.75rem;
+  --bt-text-sm: 0.875rem;
+  --bt-text-base: 1rem;
+  --bt-text-lg: 1.125rem;
+  --bt-text-xl: 1.375rem;
+  --bt-text-2xl: 1.75rem;
+  --bt-text-3xl: 2.25rem;
+  --bt-text-4xl: 3rem;
+  --bt-leading-tight: 1.15;
+  --bt-leading-normal: 1.5;
+
+  // spacing (4px scale)
+  --bt-space-1: 0.25rem;
+  --bt-space-2: 0.5rem;
+  --bt-space-3: 0.75rem;
+  --bt-space-4: 1rem;
+  --bt-space-5: 1.25rem;
+  --bt-space-6: 1.5rem;
+  --bt-space-8: 2rem;
+  --bt-space-10: 2.5rem;
+  --bt-space-12: 3rem;
+  --bt-space-16: 4rem;
+  --bt-space-20: 5rem;
+
+  // shape
+  --bt-radius-sm: 4px;
+  --bt-radius-md: 8px;
+  --bt-radius-lg: 14px;
+  --bt-radius-pill: 999px;
+  --bt-border-width: 1px;
+
+  // elevation: warm, soft, low
+  --bt-shadow-sm: 0 1px 2px rgb(var(--bt-shadow-color) / 0.1);
+  --bt-shadow-md:
+    0 1px 2px rgb(var(--bt-shadow-color) / 0.08), 0 4px 12px rgb(var(--bt-shadow-color) / 0.08);
+  --bt-shadow-lg:
+    0 2px 4px rgb(var(--bt-shadow-color) / 0.08), 0 12px 32px rgb(var(--bt-shadow-color) / 0.14);
+
+  // motion
+  --bt-duration-fast: 120ms;
+  --bt-duration-base: 200ms;
+  --bt-duration-slow: 320ms;
+  --bt-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --bt-ease-emphasized: cubic-bezier(0.3, 0, 0, 1.15);
+
+  // layout
+  --bt-content-max: 72rem;
+  --bt-focus-ring: 0 0 0 2px var(--bt-color-bg), 0 0 0 4px var(--bt-color-focus);
+}
+
+:root {
+  @include bt-static-tokens;
+  @include bt-light-palette;
+}
+
+// Follow the system unless the user picked a mode (ThemeService sets data-theme).
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    @include bt-dark-palette;
+  }
+}
+
+:root[data-theme='dark'] {
+  @include bt-dark-palette;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --bt-duration-fast: 0ms;
+    --bt-duration-base: 0ms;
+    --bt-duration-slow: 0ms;
+  }
+}

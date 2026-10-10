@@ -6,7 +6,7 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test --watch=false",
+    "test": "node scripts/check-contrast.mjs && ng test --watch=false",
     "test:watch": "ng test",
     "storybook": "ng run web:storybook",
     "build-storybook": "ng run web:build-storybook"

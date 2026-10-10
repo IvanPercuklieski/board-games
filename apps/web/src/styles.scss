@@ -1,1 +1,8 @@
-/* You can add global styles to this file, and also import other style files */
+// Global styles: self-hosted fonts (no third-party font requests), tokens, base elements.
+@use '@fontsource-variable/fraunces/index.css' as fraunces;
+@use '@fontsource/ibm-plex-sans/400.css' as plex-sans-400;
+@use '@fontsource/ibm-plex-sans/500.css' as plex-sans-500;
+@use '@fontsource/ibm-plex-sans/600.css' as plex-sans-600;
+@use '@fontsource/ibm-plex-mono/400.css' as plex-mono-400;
+@use 'app/ui/styles/tokens';
+@use 'app/ui/styles/base';

@@ -1,0 +1,117 @@
+// Base element styles. Components style themselves; this only sets the page and typography.
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background-color: var(--bt-color-bg);
+  // A barely visible paper grain (generated noise, no images of real games).
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.15 0 0 0 0 0.12 0 0 0 0 0.1 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  color: var(--bt-color-text);
+  font-family: var(--bt-font-sans);
+  font-size: var(--bt-text-base);
+  line-height: var(--bt-leading-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-family: var(--bt-font-display);
+  font-weight: 560;
+  line-height: var(--bt-leading-tight);
+  letter-spacing: -0.01em;
+  font-optical-sizing: auto;
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: var(--bt-text-3xl);
+}
+h2 {
+  font-size: var(--bt-text-2xl);
+}
+h3 {
+  font-size: var(--bt-text-xl);
+}
+h4 {
+  font-size: var(--bt-text-lg);
+}
+
+p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+a {
+  color: var(--bt-color-accent-text);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+
+  &:hover {
+    text-decoration-thickness: 2px;
+  }
+}
+
+code,
+kbd,
+samp {
+  font-family: var(--bt-font-mono);
+  font-size: 0.95em;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--bt-focus-ring);
+  border-radius: var(--bt-radius-sm);
+}
+
+::selection {
+  background: var(--bt-color-accent-subtle);
+  color: var(--bt-color-text);
+}
+
+// Hidden visually, still read by screen readers.
+.bt-visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

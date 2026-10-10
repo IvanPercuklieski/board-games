@@ -79,7 +79,8 @@
           "options": {
             "configDir": ".storybook",
             "browserTarget": "web:build",
-            "port": 6006
+            "port": 6006,
+            "styles": ["src/styles.scss"]
           }
         },
         "build-storybook": {
@@ -87,7 +88,8 @@
           "options": {
             "configDir": ".storybook",
             "browserTarget": "web:build",
-            "outputDir": "storybook-static"
+            "outputDir": "storybook-static",
+            "styles": ["src/styles.scss"]
           }
         }
       }
