@@ -1,18 +1,25 @@
-// Runs database tasks against the DEV Supabase project (board-games-dev) only, never production.
-// Reads DATABASE_URL from .env.dev only (parsed from the file, not the shell environment). No Docker needed.
+// Database tasks for one Supabase project. No Docker needed.
+// Reads DATABASE_URL only from the matching env file (parsed from the file, never the shell env):
+//   dev  -> .env.dev  (board-games-dev)
+//   prod -> .env.prod (board-games, the live site: only with the user's explicit go-ahead)
 //
-//   node scripts/db-dev.mjs test   run supabase/tests/*.test.sql (pgTAP) and report results
-//   node scripts/db-dev.mjs push   apply supabase/migrations to the dev project
+//   node scripts/db.mjs <dev|prod> test   run supabase/tests/*.test.sql (pgTAP; each file rolls back)
+//   node scripts/db.mjs <dev|prod> push   apply supabase/migrations
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseEnv } from 'node:util';
 import postgres from 'postgres';
 
-const envFile = '.env.dev';
+const target = process.argv[2];
+if (target !== 'dev' && target !== 'prod') {
+  console.error('Usage: node scripts/db.mjs <dev|prod> <test|push>');
+  process.exit(1);
+}
+const envFile = `.env.${target}`;
 if (!existsSync(envFile)) {
   console.error(
-    `${envFile} not found. Copy .env.example to ${envFile} and fill in the dev project values.`,
+    `${envFile} not found. Copy .env.example to ${envFile} and fill in that project's values.`,
   );
   process.exit(1);
 }
@@ -22,7 +29,8 @@ if (!dbUrl) {
   process.exit(1);
 }
 
-const command = process.argv[2];
+const command = process.argv[3];
+console.log(`Target: ${target} (${new URL(dbUrl.replace(/^postgres(ql)?:/, 'http:')).hostname})`);
 
 if (command === 'push') {
   const result = spawnSync('npx', ['supabase', 'db', 'push', '--db-url', dbUrl, '--yes'], {
@@ -33,7 +41,7 @@ if (command === 'push') {
 } else if (command === 'test') {
   process.exit(await runTests());
 } else {
-  console.error('Usage: node scripts/db-dev.mjs <test|push>');
+  console.error('Usage: node scripts/db.mjs <dev|prod> <test|push>');
   process.exit(1);
 }
 
