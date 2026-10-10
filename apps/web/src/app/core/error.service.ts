@@ -1,8 +1,9 @@
 import { DOCUMENT } from '@angular/common';
-import { Injectable, inject } from '@angular/core';
+import { Injectable, Injector, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { ToastService, type ToastAction } from '../ui/toast/toast.service';
 import { ApiError } from './api-client';
+import { AuthService } from './auth.service';
 import { describeError, isChunkLoadError } from './error-messages';
 
 /** The same message is shown at most once in this window (polling can't flood the screen). */
@@ -19,6 +20,7 @@ export class ErrorService {
   private readonly toasts = inject(ToastService);
   private readonly router = inject(Router);
   private readonly document = inject(DOCUMENT);
+  private readonly injector = inject(Injector);
   /** message -> when it was last shown; pruned on every report, so it stays tiny. */
   private readonly recent = new Map<string, number>();
 
@@ -46,10 +48,14 @@ export class ErrorService {
       return { label: 'Reload', run: () => this.document.location.reload() };
     }
     if (error instanceof ApiError && error.code === 'unauthorized') {
+      // The session is no longer valid: end it here too, or the login page (signed-out only)
+      // would send the user straight back. AuthService is resolved lazily: it needs the
+      // runtime config, which may not be loaded when early errors are reported.
+      const signedOut = this.injector.get(AuthService).signOut();
+      const next = encodeURIComponent(this.router.url);
       return {
         label: 'Log in',
-        run: () =>
-          void this.router.navigateByUrl(`/login?next=${encodeURIComponent(this.router.url)}`),
+        run: () => void signedOut.then(() => this.router.navigateByUrl(`/login?next=${next}`)),
       };
     }
     return undefined;

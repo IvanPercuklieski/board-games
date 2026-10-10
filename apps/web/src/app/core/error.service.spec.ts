@@ -2,15 +2,20 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { ToastService } from '../ui/toast/toast.service';
 import { ApiError } from './api-client';
+import { AuthService } from './auth.service';
 import { ErrorService } from './error.service';
 
 describe('ErrorService', () => {
   let errors: ErrorService;
   let toasts: ToastService;
   let log: ReturnType<typeof vi.spyOn>;
+  let signOut: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({ providers: [provideRouter([])] });
+    signOut = vi.fn(async () => undefined);
+    TestBed.configureTestingModule({
+      providers: [provideRouter([]), { provide: AuthService, useValue: { signOut } }],
+    });
     errors = TestBed.inject(ErrorService);
     toasts = TestBed.inject(ToastService);
     log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -47,14 +52,15 @@ describe('ErrorService', () => {
     expect(toasts.toasts()).toHaveLength(1);
   });
 
-  it('offers to log in again when the session ended', async () => {
+  it('signs out on this device and offers to log in again when the session ended', async () => {
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
     errors.report(new ApiError('unauthorized', 401));
+    expect(signOut).toHaveBeenCalledTimes(1); // so the login page is reachable
     const [toast] = toasts.toasts();
     expect(toast!.message).toMatch(/session ended/);
     expect(toast!.action?.label).toBe('Log in');
     toast!.action!.run();
-    expect(navigate).toHaveBeenCalledWith('/login?next=%2F');
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/login?next=%2F'));
   });
 
   it('shows known failures that aren’t exceptions, once', () => {
