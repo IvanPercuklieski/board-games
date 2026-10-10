@@ -5,6 +5,7 @@ import type {
   RoomRecord,
   RoomsRepository,
   SeatRecord,
+  StaleCutoffs,
 } from '../rooms/rooms-repository';
 import type { GameStorage } from '../storage/game-storage';
 
@@ -85,6 +86,7 @@ export class MemoryRoomsRepository implements RoomsRepository {
     if (free === undefined) return undefined;
     seats.push(toSeat(free, seat));
     seats.sort((a, b) => a.seatIndex - b.seatIndex);
+    room.lastActivityAt = new Date();
     if (room.status === 'playing') {
       await this.storage.setPlayerSeat(roomId, free, {
         name: seat.name,
@@ -100,13 +102,16 @@ export class MemoryRoomsRepository implements RoomsRepository {
     const index = seats.findIndex((s) => s.seatIndex === seatIndex);
     if (!room || index === -1) return false;
     seats.splice(index, 1);
+    room.lastActivityAt = new Date();
     if (room.status === 'playing') await this.storage.setPlayerSeat(roomId, seatIndex, undefined);
     return true;
   }
 
   async setInviteTokenHash(roomId: string, hash: string) {
     const room = this.rooms.get(roomId);
-    if (room) room.inviteTokenHash = hash;
+    if (!room) return;
+    room.inviteTokenHash = hash;
+    room.lastActivityAt = new Date();
   }
 
   async replaceSeatCredentials(roomId: string, seatIndex: number, credentialsHash: string) {
@@ -142,15 +147,26 @@ export class MemoryRoomsRepository implements RoomsRepository {
     if (room) room.lastActivityAt = new Date();
   }
 
+  async finishGame(roomId: string) {
+    const room = this.rooms.get(roomId);
+    if (room) {
+      room.status = 'waiting';
+      room.lastActivityAt = new Date();
+    }
+    await this.storage.wipe(roomId);
+    return room !== undefined;
+  }
+
   async deleteRoom(roomId: string) {
     this.rooms.delete(roomId);
     this.seats.delete(roomId);
     await this.storage.wipe(roomId);
   }
 
-  async listRoomIdsInactiveSince(cutoff: Date) {
+  async listStaleRoomIds({ waitingBefore, playingBefore }: StaleCutoffs) {
+    const cutoff = { waiting: waitingBefore, playing: playingBefore };
     return [...this.rooms.values()]
-      .filter((r) => r.lastActivityAt.getTime() < cutoff.getTime())
+      .filter((r) => r.lastActivityAt.getTime() < cutoff[r.status].getTime())
       .map((r) => r.id);
   }
 

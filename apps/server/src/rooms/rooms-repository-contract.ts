@@ -135,14 +135,26 @@ export function describeRoomsRepositoryContract(
       expect((await repo.findRoom(room.id))!.inviteTokenHash).toBe('new-hash');
     });
 
-    it('touch moves last activity forward', async () => {
-      const room = await createRoom(alice);
-      const before = (await repo.findRoom(room.id))!.lastActivityAt;
+    /** Runs `change` and expects it to move the room's last activity forward. */
+    async function expectActivity(roomId: string, change: () => Promise<unknown>) {
+      const before = (await repo.findRoom(roomId))!.lastActivityAt;
       await new Promise((r) => setTimeout(r, 20));
-      await repo.touch(room.id);
-      expect((await repo.findRoom(room.id))!.lastActivityAt.getTime()).toBeGreaterThan(
+      await change();
+      expect((await repo.findRoom(roomId))!.lastActivityAt.getTime()).toBeGreaterThan(
         before.getTime(),
       );
+    }
+
+    it('touch moves last activity forward', async () => {
+      const room = await createRoom(alice);
+      await expectActivity(room.id, () => repo.touch(room.id));
+    });
+
+    it('counts joining, freeing a seat and a new invite link as activity', async () => {
+      const room = await createRoom(alice);
+      await expectActivity(room.id, () => repo.takeFreeSeat(room.id, guest('Bob')));
+      await expectActivity(room.id, () => repo.freeSeat(room.id, 1));
+      await expectActivity(room.id, () => repo.setInviteTokenHash(room.id, 'newer-hash'));
     });
 
     describe('starting a room', () => {
@@ -244,12 +256,67 @@ export function describeRoomsRepositoryContract(
       expect((await storage.fetch(room.id, { state: true })).state).toBeUndefined();
     });
 
-    it('lists rooms inactive since a cutoff', async () => {
-      const room = await createRoom(alice);
+    describe('finishing a game', () => {
+      async function startedRoom() {
+        const room = await createRoom(alice, 3);
+        await repo.takeFreeSeat(room.id, guest('Bob'));
+        await repo.startRoom(room.id, (seats) => buildMatch('tictactoe', seats));
+        return room;
+      }
+
+      it('deletes the match and opens the room again with the same seats and link', async () => {
+        const room = await startedRoom();
+        const seats = await repo.listSeats(room.id);
+        await expectActivity(room.id, async () =>
+          expect(await repo.finishGame(room.id)).toBe(true),
+        );
+        expect(await repo.findRoom(room.id)).toMatchObject({
+          status: 'waiting',
+          maxSeats: 2,
+          inviteTokenHash: room.inviteTokenHash,
+        });
+        expect(await repo.listSeats(room.id)).toEqual(seats);
+        expect((await storage.fetch(room.id, { state: true })).state).toBeUndefined();
+      });
+
+      it('lets the room start a new game under the same match id', async () => {
+        const room = await startedRoom();
+        await repo.finishGame(room.id);
+        expect(await repo.startRoom(room.id, (s) => buildMatch('tictactoe', s))).toBe('started');
+        const { state } = await storage.fetch(room.id, { state: true });
+        expect(state.ctx.gameover).toBeUndefined();
+        expect(state._stateID).toBe(0);
+      });
+
+      it('deletes a match that has no room and returns false', async () => {
+        const id = newRoomId();
+        await storage.createMatch(id, buildMatch('tictactoe', [guest('A'), guest('B')]));
+        expect(await repo.finishGame(id)).toBe(false);
+        expect((await storage.fetch(id, { state: true })).state).toBeUndefined();
+      });
+    });
+
+    it('lists stale rooms with separate idle limits for waiting and playing rooms', async () => {
+      const waiting = await createRoom(alice);
+      const playing = await createRoom(alice);
+      await repo.takeFreeSeat(playing.id, guest('Bob'));
+      await repo.startRoom(playing.id, (seats) => buildMatch('tictactoe', seats));
       const inFuture = new Date(Date.now() + 60_000);
       const inPast = new Date(Date.now() - 60_000);
-      expect(await repo.listRoomIdsInactiveSince(inFuture)).toContain(room.id);
-      expect(await repo.listRoomIdsInactiveSince(inPast)).not.toContain(room.id);
+
+      const waitingStale = await repo.listStaleRoomIds({
+        waitingBefore: inFuture,
+        playingBefore: inPast,
+      });
+      expect(waitingStale).toContain(waiting.id);
+      expect(waitingStale).not.toContain(playing.id);
+
+      const playingStale = await repo.listStaleRoomIds({
+        waitingBefore: inPast,
+        playingBefore: inFuture,
+      });
+      expect(playingStale).toContain(playing.id);
+      expect(playingStale).not.toContain(waiting.id);
     });
   });
 }

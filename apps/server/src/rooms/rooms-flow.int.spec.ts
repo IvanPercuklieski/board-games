@@ -19,7 +19,7 @@ afterAll(async () => {
 });
 
 describe('rooms flow on board-games-dev', () => {
-  it('create -> join -> start -> play to a win -> room, seats and match are gone', async () => {
+  it('create -> join -> start -> play to a win -> match is gone, room and seats stay', async () => {
     await sql`
       insert into auth.users (id, email, raw_user_meta_data, aud, role)
       values (${hostId}, ${`${hostId}@test.local`}, ${sql.json({ display_name: 'Alice' })},
@@ -66,7 +66,8 @@ describe('rooms flow on board-games-dev', () => {
             (select count(*)::int from public.rooms where id = ${room.roomId}) as rooms,
             (select count(*)::int from public.room_seats where room_id = ${room.roomId}) as seats,
             (select count(*)::int from bgio.matches where match_id = ${room.roomId}) as matches`;
-        expect(counts).toEqual({ rooms: 0, seats: 0, matches: 0 });
+        // the match is gone; the room and its seats stay for the next game
+        expect(counts).toEqual({ rooms: 1, seats: 2, matches: 0 });
       }, 10_000);
     } finally {
       await app.stop();

@@ -8,6 +8,7 @@ import type {
   RoomRecord,
   RoomsRepository,
   SeatRecord,
+  StaleCutoffs,
 } from './rooms-repository';
 
 interface RoomRow {
@@ -102,6 +103,7 @@ export class PostgresRoomsRepository implements RoomsRepository {
       const free = Array.from({ length: room.max_seats }, (_, i) => i).find((i) => !taken.has(i));
       if (free === undefined) return undefined;
       await insertSeat(tx, roomId, free, seat);
+      await touchInTx(tx, roomId);
       if (room.status === 'playing') {
         await setPlayerSeatInDb(tx, roomId, free, {
           name: seat.name,
@@ -120,6 +122,7 @@ export class PostgresRoomsRepository implements RoomsRepository {
         delete from public.room_seats where room_id = ${roomId} and seat_index = ${seatIndex}
         returning seat_index`;
       if (deleted.length === 0) return false;
+      await touchInTx(tx, roomId);
       if (room.status === 'playing') await setPlayerSeatInDb(tx, roomId, seatIndex, undefined);
       return true;
     });
@@ -142,7 +145,9 @@ export class PostgresRoomsRepository implements RoomsRepository {
   }
 
   async setInviteTokenHash(roomId: string, hash: string) {
-    await this.sql`update public.rooms set invite_token_hash = ${hash} where id = ${roomId}`;
+    await this.sql`
+      update public.rooms set invite_token_hash = ${hash}, last_activity_at = now()
+      where id = ${roomId}`;
   }
 
   startRoom(roomId: string, build: MatchBuilder) {
@@ -173,7 +178,18 @@ export class PostgresRoomsRepository implements RoomsRepository {
   }
 
   async touch(roomId: string) {
-    await this.sql`update public.rooms set last_activity_at = now() where id = ${roomId}`;
+    await touchInTx(this.sql, roomId);
+  }
+
+  finishGame(roomId: string) {
+    return this.sql.begin(async (tx) => {
+      const room = await lockRoom(tx, roomId);
+      await tx`delete from bgio.matches where match_id = ${roomId}`;
+      if (!room) return false;
+      await tx`
+        update public.rooms set status = 'waiting', last_activity_at = now() where id = ${roomId}`;
+      return true;
+    });
   }
 
   async deleteRoom(roomId: string) {
@@ -183,9 +199,11 @@ export class PostgresRoomsRepository implements RoomsRepository {
     });
   }
 
-  async listRoomIdsInactiveSince(cutoff: Date) {
+  async listStaleRoomIds({ waitingBefore, playingBefore }: StaleCutoffs) {
     const rows = await this.sql<{ id: string }[]>`
-      select id from public.rooms where last_activity_at < ${cutoff}`;
+      select id from public.rooms
+      where (status = 'waiting' and last_activity_at < ${waitingBefore})
+         or (status = 'playing' and last_activity_at < ${playingBefore})`;
     return rows.map((r) => r.id);
   }
 }
@@ -195,6 +213,10 @@ async function lockRoom(tx: Tx, roomId: string) {
   const [row] = await tx<Pick<RoomRow, 'status' | 'max_seats'>[]>`
     select status, max_seats from public.rooms where id = ${roomId} for update`;
   return row;
+}
+
+async function touchInTx(sql: Sql | Tx, roomId: string) {
+  await sql`update public.rooms set last_activity_at = now() where id = ${roomId}`;
 }
 
 function selectSeats(sql: Sql | Tx, roomId: string) {

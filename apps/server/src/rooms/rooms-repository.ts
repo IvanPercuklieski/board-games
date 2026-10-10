@@ -35,12 +35,18 @@ export interface NewSeat {
   credentialsHash: string;
 }
 
+export interface StaleCutoffs {
+  waitingBefore: Date;
+  playingBefore: Date;
+}
+
 /** Builds the boardgame.io match from the seats as they are at start time (inside the lock). */
 export type MatchBuilder = (seats: MatchSeat[]) => StorageAPI.CreateMatchOpts;
 
 /**
- * Persistence for rooms, seats and (at start/delete) their boardgame.io match.
- * Every method that touches more than one row is atomic.
+ * Persistence for rooms, seats and (at start/finish/delete) their boardgame.io match.
+ * Every method that touches more than one row is atomic. Changes to a room (joining, freeing
+ * a seat, a new invite link, starting or finishing a game) count as activity.
  */
 export interface RoomsRepository {
   findProfile(userId: string): Promise<{ displayName: string } | undefined>;
@@ -84,7 +90,14 @@ export interface RoomsRepository {
    */
   startRoom(roomId: string, build: MatchBuilder): Promise<'started' | 'not_waiting'>;
   touch(roomId: string): Promise<void>;
+  /**
+   * The game is over: deletes the boardgame.io match and puts the room back to `waiting`
+   * with its seats, seat count and invite link, so the same table can play again.
+   * The match is deleted even without a room; returns false if there was no room.
+   */
+  finishGame(roomId: string): Promise<boolean>;
   /** Deletes the room, its seats and its boardgame.io match. */
   deleteRoom(roomId: string): Promise<void>;
-  listRoomIdsInactiveSince(cutoff: Date): Promise<string[]>;
+  /** Rooms whose last activity is older than the cutoff for their status. */
+  listStaleRoomIds(cutoffs: StaleCutoffs): Promise<string[]>;
 }

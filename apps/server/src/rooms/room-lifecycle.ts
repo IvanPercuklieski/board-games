@@ -2,6 +2,7 @@ import type { LogEntry, Server, State, StorageAPI } from 'boardgame.io';
 import { Async } from 'boardgame.io/internal';
 import type { GameStorage, MatchSeat } from '../storage/game-storage';
 import type { RoomsRepository } from './rooms-repository';
+import { SeatEvents } from './seat-events';
 
 const HOUR = 3_600_000;
 
@@ -10,38 +11,47 @@ type Log = (...args: unknown[]) => void;
 /**
  * Room cleanup (CLAUDE.md "Data retention"):
  * - every move updates the room's last activity,
- * - a finished game deletes its room, seats and match right away (players keep the final
- *   board in their browser),
- * - rooms without activity for 48 h are swept every 15 min.
+ * - a finished game deletes its match right away (players keep the final board in their
+ *   browser) and its sockets are disconnected; the room, seats and invite link stay, so the
+ *   same table can play again,
+ * - every 15 min, waiting rooms idle for 1 h and games in progress idle for 48 h are deleted.
  *
  * Moves and game over are observed by wrapping the storage boardgame.io writes through, so
  * no boardgame.io internals are touched.
  */
 export class RoomLifecycle {
   private readonly repo: RoomsRepository;
+  private readonly seatEvents: SeatEvents;
   private readonly now: () => number;
   private readonly log: Log;
-  private readonly staleAfterMs: number;
+  private readonly waitingIdleMs: number;
+  private readonly playingIdleMs: number;
   private readonly sweepIntervalMs: number;
   private timer: ReturnType<typeof setInterval> | undefined;
 
   constructor({
     repo,
+    seatEvents = new SeatEvents(),
     now = Date.now,
     log = console.error,
-    staleAfterMs = 48 * HOUR,
+    waitingIdleMs = HOUR,
+    playingIdleMs = 48 * HOUR,
     sweepIntervalMs = HOUR / 4,
   }: {
     repo: RoomsRepository;
+    seatEvents?: SeatEvents;
     now?: () => number;
     log?: Log;
-    staleAfterMs?: number;
+    waitingIdleMs?: number;
+    playingIdleMs?: number;
     sweepIntervalMs?: number;
   }) {
     this.repo = repo;
+    this.seatEvents = seatEvents;
     this.now = now;
     this.log = log;
-    this.staleAfterMs = staleAfterMs;
+    this.waitingIdleMs = waitingIdleMs;
+    this.playingIdleMs = playingIdleMs;
     this.sweepIntervalMs = sweepIntervalMs;
   }
 
@@ -49,17 +59,18 @@ export class RoomLifecycle {
   wrap(storage: GameStorage): GameStorage {
     return new ObservedStorage(storage, {
       onMove: (matchID) => this.guard('touch', () => this.repo.touch(matchID)),
-      onGameOver: (matchID) => this.guard('game-over cleanup', () => this.repo.deleteRoom(matchID)),
+      onGameOver: (matchID) => this.guard('game-over cleanup', () => this.finishGame(matchID)),
     });
   }
 
-  /** Deletes rooms (with seats and match) inactive for `staleAfterMs`. Returns how many. */
+  /** Deletes idle rooms (with seats and match), by their status's limit. Returns how many. */
   async sweepStale(): Promise<number> {
     let deleted = 0;
     await this.guard('stale sweep', async () => {
-      const ids = await this.repo.listRoomIdsInactiveSince(
-        new Date(this.now() - this.staleAfterMs),
-      );
+      const ids = await this.repo.listStaleRoomIds({
+        waitingBefore: new Date(this.now() - this.waitingIdleMs),
+        playingBefore: new Date(this.now() - this.playingIdleMs),
+      });
       for (const id of ids) {
         await this.repo.deleteRoom(id);
         deleted++;
@@ -77,6 +88,11 @@ export class RoomLifecycle {
   stop() {
     clearInterval(this.timer);
     this.timer = undefined;
+  }
+
+  private async finishGame(matchID: string) {
+    await this.repo.finishGame(matchID);
+    this.seatEvents.matchEnded(matchID);
   }
 
   /** Cleanup must never break gameplay or crash the server: failures are logged. */

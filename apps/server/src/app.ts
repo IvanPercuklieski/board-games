@@ -65,9 +65,9 @@ export function createApp({ config, deps }: { config: ServerConfig; deps?: AppDe
   return {
     async start(): Promise<RunningApp> {
       // boardgame.io writes through the observed storage: moves keep rooms alive, a finished
-      // game deletes its room; stale rooms are swept periodically.
-      const lifecycle = new RoomLifecycle({ repo });
+      // game deletes its match and reopens the room; idle rooms are swept periodically.
       const seatEvents = new SeatEvents();
+      const lifecycle = new RoomLifecycle({ repo, seatEvents });
       const gameStorage = lifecycle.wrap(storage);
 
       const server = Server({

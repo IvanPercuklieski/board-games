@@ -172,7 +172,6 @@ export class RoomsService {
     if (seatIndex === undefined) {
       throw new ApiFailure(room.status === 'waiting' ? 'room_full' : 'room_locked');
     }
-    await this.repo.touch(roomId);
     return { seatIndex, credentials };
   }
 

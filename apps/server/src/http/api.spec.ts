@@ -258,15 +258,17 @@ describe('rooms flow', () => {
         winner: '0',
       });
 
-      // Game over: the room, its seats and the match are deleted right away.
-      await eventually(async () => expect(await c.repo.findRoom(room.roomId)).toBeUndefined());
-      await expectError(
-        await api(c.url, `/api/rooms/${room.roomId}/lobby`, {
-          headers: seatHeader(bobSeat.credentials),
-        }),
-        404,
-        'not_found',
+      // Game over: the match is deleted; the room opens again with the same seats.
+      await eventually(async () =>
+        expect(await c.repo.findRoom(room.roomId)).toMatchObject({ status: 'waiting' }),
       );
+      const after = await api(c.url, `/api/rooms/${room.roomId}/lobby`, {
+        headers: seatHeader(bobSeat.credentials),
+      });
+      expect(lobbyResponseSchema.parse(await after.json())).toMatchObject({
+        status: 'waiting',
+        you: { seatIndex: 1 },
+      });
       // ...while the players still have the final board.
       expect(bob.getState()!.G.cells.slice(0, 3)).toEqual(['0', '0', '0']);
     } finally {
@@ -407,6 +409,93 @@ describe('rooms flow', () => {
       404,
       'not_found',
     );
+  });
+});
+
+describe('after a game', () => {
+  const sockets: { close(): void }[] = [];
+  afterEach(() => sockets.splice(0).forEach((s) => s.close()));
+
+  /** Alice and Bob play a started room to a win for Alice. */
+  async function playToTheEnd(c: Ctx & { aliceToken: string }) {
+    const room = await createRoom(c, c.aliceToken);
+    const bobSeat = await join(c, room, 'Bob');
+    await api(c.url, `/api/rooms/${room.roomId}/start`, {
+      method: 'POST',
+      headers: bearer(c.aliceToken),
+    });
+    const watcher = rawSocket(c.url);
+    sockets.push(watcher.socket);
+    await watcher.connected;
+    let disconnected = false;
+    watcher.socket.on('disconnect', () => (disconnected = true));
+    watcher.socket.emit('sync', room.roomId, '1', bobSeat.credentials, 2);
+    await eventually(async () => expect(watcher.received).toContain('sync'));
+
+    const alice = connectPlayer(c.url, room.roomId, {
+      playerID: '0',
+      credentials: room.seat.credentials,
+    });
+    const bob = connectPlayer(c.url, room.roomId, {
+      playerID: '1',
+      credentials: bobSeat.credentials,
+    });
+    try {
+      for (const [p, cell] of [
+        [alice, 0],
+        [bob, 3],
+        [alice, 1],
+        [bob, 4],
+        [alice, 2],
+      ] as const) {
+        await playMove(p, cell);
+      }
+      await waitForState(bob, (s) => s.ctx.gameover !== undefined);
+    } finally {
+      alice.stop();
+      bob.stop();
+    }
+    await eventually(async () =>
+      expect(await c.repo.findRoom(room.roomId)).toMatchObject({ status: 'waiting' }),
+    );
+    return { room, bobSeat, isDisconnected: () => disconnected };
+  }
+
+  it('disconnects the players of the finished match', async () => {
+    const c = await setup();
+    const { isDisconnected } = await playToTheEnd(c);
+    await eventually(async () => expect(isDisconnected()).toBe(true));
+  });
+
+  it('lets a new guest take a free seat with the same link', async () => {
+    const c = await setup();
+    const { room } = await playToTheEnd(c);
+    const free = await api(c.url, `/api/rooms/${room.roomId}/seats/1`, {
+      method: 'DELETE',
+      headers: bearer(c.aliceToken),
+    });
+    expect(free.status).toBe(204);
+    expect((await join(c, room, 'Carol')).seatIndex).toBe(1);
+  });
+
+  it('starts a fresh game in the same room', async () => {
+    const c = await setup();
+    const { room, bobSeat } = await playToTheEnd(c);
+    const again = await api(c.url, `/api/rooms/${room.roomId}/start`, {
+      method: 'POST',
+      headers: bearer(c.aliceToken),
+    });
+    expect(again.status).toBe(204);
+    const bob = connectPlayer(c.url, room.roomId, {
+      playerID: '1',
+      credentials: bobSeat.credentials,
+    });
+    try {
+      const state = await waitForState(bob, (s) => s.ctx.gameover === undefined);
+      expect(state.G.cells.every((cell: unknown) => cell === null)).toBe(true);
+    } finally {
+      bob.stop();
+    }
   });
 });
 
