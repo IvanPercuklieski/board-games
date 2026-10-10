@@ -6,6 +6,7 @@ import {
   Component,
   DestroyRef,
   computed,
+  effect,
   inject,
   input,
   signal,
@@ -18,7 +19,7 @@ import { ApiClient, ApiError } from '../../core/api-client';
 import { AuthService } from '../../core/auth.service';
 import { asyncAction } from '../../core/async-action';
 import { ErrorService } from '../../core/error.service';
-import { Poller } from '../../core/poller';
+import { ROOM_CONNECTION_FACTORY, type RoomConnection } from '../../core/room-connection';
 import { SeatStore, type StoredSeat } from '../../core/seat-store';
 import { GameCoverComponent } from '../../games/covers/game-cover.component';
 import { BadgeComponent } from '../../ui/badge/badge.component';
@@ -33,9 +34,9 @@ import { SeatTokenComponent } from '../../ui/seat-token/seat-token.component';
 import { ToastService } from '../../ui/toast/toast.service';
 import { openChangeGameDialog } from './change-game-dialog.component';
 
-const POLL_INTERVAL_MS = 3000;
-
 type State = 'loading' | 'ready' | 'no-seat' | 'gone' | 'offline';
+/** Set while we end our own seat or room, so the server's "closed" isn't shown as an error. */
+type Ending = 'leaving' | 'closing';
 
 /** The lobby before a game: who sits where; the host shares the link and starts. */
 @Component({
@@ -107,6 +108,7 @@ type State = 'loading' | 'ready' | 'no-seat' | 'gone' | 'offline';
                         [name]="row.seat?.name"
                         [isHost]="row.seat?.isHost ?? false"
                         [isYou]="row.seatIndex === lobby.you.seatIndex"
+                        [away]="row.seat?.away ?? false"
                       />
                       <span class="seat-name">
                         @if (row.seat; as seat) {
@@ -116,6 +118,9 @@ type State = 'loading' | 'ready' | 'no-seat' | 'gone' | 'offline';
                           }
                           @if (row.seatIndex === lobby.you.seatIndex) {
                             <span class="tag">You</span>
+                          }
+                          @if (seat.away) {
+                            <span class="tag away">Away</span>
                           }
                         } @else {
                           <span class="muted">Free seat</span>
@@ -135,7 +140,7 @@ type State = 'loading' | 'ready' | 'no-seat' | 'gone' | 'offline';
                   }
                 </ul>
 
-                @if (connectionLost()) {
+                @if (!connected()) {
                   <p class="reconnecting"><bt-spinner size="sm" /> Reconnecting…</p>
                 }
               </section>
@@ -182,8 +187,8 @@ type State = 'loading' | 'ready' | 'no-seat' | 'gone' | 'offline';
                       </div>
                     } @else {
                       <p class="muted">
-                        The invite link was created on another device. Make a new one to share it
-                        from here.
+                        Only the device that made the invite link can show it. Make a new link to
+                        share it from here; the old one stops working.
                       </p>
                       <button
                         bt-button
@@ -207,19 +212,27 @@ type State = 'loading' | 'ready' | 'no-seat' | 'gone' | 'offline';
                     >
                       <bt-icon name="play" /> {{ played() ? 'Play again' : 'Start game' }}
                     </button>
-                    @if (!canStart()) {
-                      <p class="muted center-text">
-                        Waiting for at least {{ minPlayers() }} players
-                      </p>
+                    @if (startHint(); as hint) {
+                      <p class="muted center-text">{{ hint }}</p>
                     }
-                    <button
-                      bt-button
-                      variant="ghost"
-                      [loading]="closeAction.busy()"
-                      (click)="close()"
-                    >
-                      <bt-icon name="door-open" /> Close room
-                    </button>
+                    <div class="row">
+                      <button
+                        bt-button
+                        variant="ghost"
+                        [loading]="closeAction.busy()"
+                        (click)="close()"
+                      >
+                        <bt-icon name="door-open" /> Close room
+                      </button>
+                      <button
+                        bt-button
+                        variant="ghost"
+                        [loading]="leaveAction.busy()"
+                        (click)="leave()"
+                      >
+                        <bt-icon name="sign-out" /> Leave table
+                      </button>
+                    </div>
                   </bt-card>
                 </aside>
               } @else {
@@ -228,6 +241,14 @@ type State = 'loading' | 'ready' | 'no-seat' | 'gone' | 'offline';
                     <bt-spinner size="lg" />
                     <p>Waiting for {{ hostName() }} to start the game</p>
                     <p class="muted">Keep this page open, the game starts here.</p>
+                    <button
+                      bt-button
+                      variant="ghost"
+                      [loading]="leaveAction.busy()"
+                      (click)="leave()"
+                    >
+                      <bt-icon name="sign-out" /> Leave table
+                    </button>
                   </bt-card>
                 </aside>
               }
@@ -313,6 +334,10 @@ type State = 'loading' | 'ready' | 'no-seat' | 'gone' | 'offline';
       font-size: var(--bt-text-xs);
       font-weight: 600;
     }
+    .tag.away {
+      background: var(--bt-color-warning-subtle);
+      color: var(--bt-color-warning-text);
+    }
     .reconnecting {
       display: flex;
       align-items: center;
@@ -389,14 +414,21 @@ export class WaitingRoomPage implements OnInit {
   private readonly clipboard = inject(Clipboard);
   private readonly toasts = inject(ToastService);
   private readonly errors = inject(ErrorService);
+  private readonly connect = inject(ROOM_CONNECTION_FACTORY);
 
-  private readonly poller = new Poller(() => this.refresh(), POLL_INTERVAL_MS);
   private seat: StoredSeat | undefined;
+  private readonly connection = signal<RoomConnection | undefined>(undefined);
+  /** Before the connection: loading, no seat, or offline (the host seat couldn't be reclaimed). */
+  private readonly setupState = signal<State | undefined>('loading');
+  private readonly ending = signal<Ending | undefined>(undefined);
 
-  protected readonly state = signal<State>('loading');
-  protected readonly lobby = signal<LobbyResponse | null>(null);
+  protected readonly lobby = computed(() => this.connection()?.lobby());
+  protected readonly connected = computed(() => this.connection()?.connected() ?? true);
+  private readonly closed = computed(() => this.connection()?.closed() ?? false);
+  protected readonly state = computed<State>(
+    () => this.setupState() ?? (this.closed() ? 'gone' : this.lobby() ? 'ready' : 'loading'),
+  );
   protected readonly inviteUrl = signal<string | undefined>(undefined);
-  protected readonly connectionLost = signal(false);
 
   protected readonly newLinkAction = asyncAction(
     async () => {
@@ -409,9 +441,16 @@ export class WaitingRoomPage implements OnInit {
   );
   protected readonly startAction = asyncAction(() => this.api.startRoom(this.roomId()), {
     context: 'The game couldn’t be started.',
-    // someone already started it: the next poll moves everyone to the table
+    // someone already started it: the next snapshot moves everyone to the table
     onError: (e) => e instanceof ApiError && e.code === 'room_locked',
   });
+  protected readonly leaveAction = asyncAction(
+    async () => {
+      await this.api.leave(this.roomId(), this.seat!.credentials);
+      return true;
+    },
+    { context: 'You couldn’t leave the table.' },
+  );
   protected readonly freeSeatAction = asyncAction(
     (seat: SeatInfo) => this.api.freeSeat(this.roomId(), seat.seatIndex),
     { context: 'The seat couldn’t be freed.' },
@@ -427,15 +466,25 @@ export class WaitingRoomPage implements OnInit {
   private readonly game = computed(() => getCatalogEntry(this.lobby()?.gameId ?? ''));
   protected readonly gameName = computed(() => this.game()?.displayName ?? 'Game');
   protected readonly minPlayers = computed(() => this.game()?.minPlayers ?? 2);
-  protected readonly isHost = computed(
-    () => this.lobby()?.you.seatIndex === 0 && this.auth.isSignedIn(),
-  );
+  protected readonly isHost = computed(() => this.lobby()?.you.isHost ?? false);
   protected readonly hostName = computed(
     () => this.lobby()?.seats.find((s) => s.isHost)?.name ?? 'the host',
   );
-  protected readonly canStart = computed(
-    () => (this.lobby()?.seats.length ?? 0) >= this.minPlayers(),
+  private readonly awayNames = computed(
+    () => this.lobby()?.seats.filter((s) => s.away).map((s) => s.name) ?? [],
   );
+  protected readonly canStart = computed(
+    () => (this.lobby()?.seats.length ?? 0) >= this.minPlayers() && this.awayNames().length === 0,
+  );
+  /** Why Start is disabled, if it is. */
+  protected readonly startHint = computed(() => {
+    const away = this.awayNames();
+    if (away.length > 0) return `Waiting for ${listNames(away)} to come back`;
+    if ((this.lobby()?.seats.length ?? 0) < this.minPlayers()) {
+      return `Waiting for at least ${this.minPlayers()} players`;
+    }
+    return undefined;
+  });
   protected readonly seatsTaken = computed(() => {
     const lobby = this.lobby();
     return lobby ? `${lobby.seats.length} of ${lobby.maxSeats} seats taken` : '';
@@ -450,7 +499,32 @@ export class WaitingRoomPage implements OnInit {
   });
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => this.poller.stop());
+    inject(DestroyRef).onDestroy(() => this.connection()?.stop());
+
+    // The game started: everyone goes to the table (the play page opens its own connection).
+    effect(() => {
+      if (this.lobby()?.status === 'playing') {
+        void this.router.navigateByUrl(`/rooms/${this.roomId()}/play`);
+      }
+    });
+
+    // The room or our seat is gone. When we ended it ourselves, that is not news.
+    effect(() => {
+      if (!this.closed()) return;
+      this.seatStore.forget(this.roomId());
+      if (this.ending() === undefined) this.errors.report(new ApiError('not_found', 404));
+    });
+
+    // The room was handed to us (the host left or went away).
+    let wasHost: boolean | undefined;
+    effect(() => {
+      const lobby = this.lobby();
+      if (!lobby) return;
+      if (wasHost === false && lobby.you.isHost) {
+        this.toasts.show({ message: 'You’re the host now', tone: 'success' });
+      }
+      wasHost = lobby.you.isHost;
+    });
   }
 
   ngOnInit() {
@@ -458,7 +532,7 @@ export class WaitingRoomPage implements OnInit {
   }
 
   protected retry() {
-    this.state.set('loading');
+    this.setupState.set('loading');
     void this.init();
   }
 
@@ -467,19 +541,20 @@ export class WaitingRoomPage implements OnInit {
     try {
       this.seat = this.seatStore.seat(roomId) ?? (await this.reclaimHostSeat(roomId));
     } catch (e) {
-      this.state.set('offline');
+      this.setupState.set('offline');
       this.errors.report(e, { context: 'The table couldn’t be loaded.' });
       return;
     }
     if (!this.seat) {
-      this.state.set('no-seat');
+      this.setupState.set('no-seat');
       return;
     }
     this.inviteUrl.set(this.seatStore.inviteUrl(roomId));
-    this.poller.start();
+    this.connection.set(this.connect({ roomId, credentials: this.seat.credentials }));
+    this.setupState.set(undefined);
   }
 
-  /** A host opening their room on another device gets fresh credentials for seat 0. */
+  /** A host opening their room on another device gets fresh credentials for their seat. */
   private async reclaimHostSeat(roomId: string): Promise<StoredSeat | undefined> {
     if (!this.auth.isSignedIn()) return undefined;
     try {
@@ -489,29 +564,6 @@ export class WaitingRoomPage implements OnInit {
     } catch (e) {
       if (e instanceof ApiError && e.code === 'not_found') return undefined; // not their room
       throw e; // e.g. offline: init shows it
-    }
-  }
-
-  private async refresh() {
-    if (!this.seat) return;
-    try {
-      const lobby = await this.api.lobby(this.roomId(), this.seat.credentials);
-      this.lobby.set(lobby);
-      this.connectionLost.set(false);
-      this.state.set('ready');
-      if (lobby.status === 'playing') {
-        this.poller.stop();
-        await this.router.navigateByUrl(`/rooms/${this.roomId()}/play`);
-      }
-    } catch (e) {
-      if (e instanceof ApiError && e.code === 'not_found') {
-        this.poller.stop();
-        this.seatStore.forget(this.roomId());
-        this.state.set('gone');
-        this.errors.report(e);
-      } else {
-        this.connectionLost.set(true); // background polling: shown inline, no toast
-      }
     }
   }
 
@@ -539,8 +591,7 @@ export class WaitingRoomPage implements OnInit {
   }
 
   protected async start() {
-    await this.startAction.run();
-    await this.poller.runNow(); // picks up "playing" and moves to the table
+    await this.startAction.run(); // the next snapshot ("playing") moves everyone to the table
   }
 
   protected async changeGame(lobby: LobbyResponse) {
@@ -552,7 +603,6 @@ export class WaitingRoomPage implements OnInit {
     });
     if (!room) return;
     this.toasts.show({ message: 'Game changed', tone: 'success' });
-    await this.poller.runNow(); // shows the new game and seats
   }
 
   protected async freeSeat(seat: SeatInfo) {
@@ -564,7 +614,26 @@ export class WaitingRoomPage implements OnInit {
     });
     if (!ok) return;
     await this.freeSeatAction.run(seat);
-    await this.poller.runNow();
+  }
+
+  protected async leave() {
+    const ok = await this.confirmService.confirm({
+      title: 'Leave this table?',
+      message: this.isHost()
+        ? 'Someone else with an account takes over as host. If nobody can, the room is closed.'
+        : 'Your seat is freed for someone else.',
+      confirmLabel: 'Leave table',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    const host = this.isHost();
+    this.ending.set('leaving');
+    if (!(await this.leaveAction.run())) {
+      this.ending.set(undefined);
+      return;
+    }
+    this.seatStore.forget(this.roomId());
+    await this.router.navigateByUrl(host ? '/rooms' : '/');
   }
 
   protected async close() {
@@ -575,12 +644,17 @@ export class WaitingRoomPage implements OnInit {
       tone: 'danger',
     });
     if (!ok) return;
-    this.poller.stop(); // before the request, so no lobby poll runs while the room is deleted
+    this.ending.set('closing');
     if (!(await this.closeAction.run())) {
-      this.poller.start();
+      this.ending.set(undefined);
       return;
     }
     this.seatStore.forget(this.roomId());
     await this.router.navigateByUrl('/rooms');
   }
+}
+
+/** "Mara", "Mara and Theo", "Mara, Theo and Jun". */
+function listNames(names: string[]): string {
+  return names.length < 2 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
 }

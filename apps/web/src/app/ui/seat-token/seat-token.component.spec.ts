@@ -10,6 +10,14 @@ describe('SeatTokenComponent', () => {
     expect(screen.getByRole('img', { name: 'Seat 1: Alice Smith (host, you)' })).toBeTruthy();
   });
 
+  it('marks a player who is away', async () => {
+    const { fixture } = await render(SeatTokenComponent, {
+      inputs: { seatIndex: 1, name: 'Mara', away: true },
+    });
+    expect(screen.getByRole('img', { name: 'Seat 2: Mara (away)' })).toBeTruthy();
+    expect((fixture.nativeElement as HTMLElement).classList.contains('away')).toBe(true);
+  });
+
   it('shows a free seat', async () => {
     await render(SeatTokenComponent, { inputs: { seatIndex: 2 } });
     expect(screen.getByRole('img', { name: 'Seat 3: free' })).toBeTruthy();

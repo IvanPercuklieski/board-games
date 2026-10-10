@@ -1,5 +1,5 @@
 import { provideRouter } from '@angular/router';
-import type { ListRoomsResponse } from '@board-table/shared';
+import type { ListRoomsResponse, LobbyResponse } from '@board-table/shared';
 import type { Meta, StoryObj } from '@storybook/angular-vite';
 import { applicationConfig } from '@storybook/angular-vite';
 import { ApiClient } from '../core/api-client';
@@ -8,6 +8,7 @@ import { GameDetailPage } from './game-detail/game-detail.page';
 import { JoinPage } from './join/join.page';
 import { signal } from '@angular/core';
 import { AuthService } from '../core/auth.service';
+import { ROOM_CONNECTION_FACTORY, type RoomConnection } from '../core/room-connection';
 import { MyRoomsPage } from './my-rooms/my-rooms.page';
 import { WaitingRoomPage } from './waiting-room/waiting-room.page';
 import {
@@ -93,16 +94,28 @@ export const Join: StoryObj<JoinPage> = {
 };
 
 const ROOM = 'AbCdEfGhIjKlMnOpQrSt_-';
-const lobbyFor = (seatIndex: number) => ({
+const lobbyFor = (seatIndex: number, { away = false } = {}): LobbyResponse => ({
   roomId: ROOM,
   gameId: 'tictactoe',
   status: 'waiting' as const,
   maxSeats: 2,
   seats: [
     { seatIndex: 0, name: 'Ivan', isHost: true, away: false },
-    ...(seatIndex === 1 ? [{ seatIndex: 1, name: 'Mara Lind', isHost: false, away: false }] : []),
-  ],
+    { seatIndex: 1, name: 'Mara Lind', isHost: false, away },
+  ].slice(0, seatIndex === 1 || away ? 2 : 1),
   you: { seatIndex, isHost: seatIndex === 0 },
+});
+
+/** A room connection that shows one fixed snapshot (no server in Storybook). */
+const staticConnection = (lobby: LobbyResponse) => ({
+  provide: ROOM_CONNECTION_FACTORY,
+  useValue: () =>
+    ({
+      lobby: signal(lobby),
+      connected: signal(true),
+      closed: signal(false),
+      stop: () => undefined,
+    }) as unknown as RoomConnection,
 });
 
 /** Seeds this browser's seat (and the host's invite link) before the page renders. */
@@ -119,39 +132,34 @@ function seed(seatIndex: number) {
   }
 }
 
-export const WaitingRoomHost: StoryObj<WaitingRoomPage> = {
-  name: 'Waiting room (host)',
+const waitingRoomStory = (
+  name: string,
+  seatIndex: number,
+  lobby: LobbyResponse,
+): StoryObj<WaitingRoomPage> => ({
+  name,
   render: () => {
-    seed(0);
+    seed(seatIndex);
     return { template: `<bt-waiting-room-page roomId="${ROOM}" />` };
   },
   decorators: [
     applicationConfig({
       providers: [
-        { provide: ApiClient, useValue: { lobby: async () => lobbyFor(0) } },
-        { provide: AuthService, useValue: { isSignedIn: signal(true) } },
+        staticConnection(lobby),
+        { provide: AuthService, useValue: { isSignedIn: signal(seatIndex === 0) } },
       ],
     }),
     (story) => ({ ...story(), moduleMetadata: { imports: [WaitingRoomPage] } }),
   ],
-};
+});
 
-export const WaitingRoomGuest: StoryObj<WaitingRoomPage> = {
-  name: 'Waiting room (guest)',
-  render: () => {
-    seed(1);
-    return { template: `<bt-waiting-room-page roomId="${ROOM}" />` };
-  },
-  decorators: [
-    applicationConfig({
-      providers: [
-        { provide: ApiClient, useValue: { lobby: async () => lobbyFor(1) } },
-        { provide: AuthService, useValue: { isSignedIn: signal(false) } },
-      ],
-    }),
-    (story) => ({ ...story(), moduleMetadata: { imports: [WaitingRoomPage] } }),
-  ],
-};
+export const WaitingRoomHost = waitingRoomStory('Waiting room (host)', 0, lobbyFor(0));
+export const WaitingRoomHostAway = waitingRoomStory(
+  'Waiting room (host, a player is away)',
+  0,
+  lobbyFor(0, { away: true }),
+);
+export const WaitingRoomGuest = waitingRoomStory('Waiting room (guest)', 1, lobbyFor(1));
 
 const sampleGame = (id: string, displayName: string, minPlayers: number, maxPlayers: number) => ({
   id,

@@ -83,7 +83,7 @@ export const Seats: StoryObj = {
         <bt-seat-token [seatIndex]="0" name="Ivan Petrov" [isHost]="true" />
         <bt-seat-token [seatIndex]="1" name="Mara" [isYou]="true" />
         <bt-seat-token [seatIndex]="2" name="Theo" />
-        <bt-seat-token [seatIndex]="3" name="Jun Park" />
+        <bt-seat-token [seatIndex]="3" name="Jun Park" [away]="true" />
         <bt-seat-token [seatIndex]="4" name="Ada" />
         <bt-seat-token [seatIndex]="5" name="Lev" />
         <bt-seat-token [seatIndex]="6" name="Ines" />
