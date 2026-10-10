@@ -44,9 +44,15 @@ export type MatchBuilder = (seats: MatchSeat[]) => StorageAPI.CreateMatchOpts;
  */
 export interface RoomsRepository {
   findProfile(userId: string): Promise<{ displayName: string } | undefined>;
-  countRoomsByHost(hostUserId: string): Promise<number>;
-  /** Creates the room with the host in seat 0. */
-  createRoom(room: NewRoom, hostSeat: NewSeat): Promise<void>;
+  /**
+   * Creates the room with the host in seat 0, unless the host already has
+   * `maxRoomsPerHost` rooms. Atomic per host, so concurrent requests can't exceed the limit.
+   */
+  createRoom(
+    room: NewRoom,
+    hostSeat: NewSeat,
+    maxRoomsPerHost: number,
+  ): Promise<'created' | 'limit_reached'>;
   findRoom(roomId: string): Promise<RoomRecord | undefined>;
   /** Newest first. */
   listRoomsByHost(hostUserId: string): Promise<RoomRecord[]>;

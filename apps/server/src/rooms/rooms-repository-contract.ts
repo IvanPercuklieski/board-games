@@ -48,7 +48,7 @@ export function describeRoomsRepositoryContract(
 
     async function createRoom(host: string, maxSeats = 2) {
       const room = newRoom(host, maxSeats);
-      await repo.createRoom(room, hostSeat(host));
+      expect(await repo.createRoom(room, hostSeat(host), 100)).toBe('created');
       return room;
     }
 
@@ -73,11 +73,19 @@ export function describeRoomsRepositoryContract(
       expect(await repo.listSeats(newRoomId())).toEqual([]);
     });
 
-    it('counts and lists rooms per host, newest first', async () => {
-      const before = await repo.countRoomsByHost(bob);
+    it('refuses to create more rooms than the per-host limit, even concurrently', async () => {
+      const carol = await fixture.createHost('Carol');
+      const results = await Promise.all(
+        Array.from({ length: 6 }, () => repo.createRoom(newRoom(carol), hostSeat(carol), 3)),
+      );
+      expect(results.filter((r) => r === 'created')).toHaveLength(3);
+      expect(results.filter((r) => r === 'limit_reached')).toHaveLength(3);
+      expect(await repo.listRoomsByHost(carol)).toHaveLength(3);
+    });
+
+    it('lists rooms per host, newest first', async () => {
       const first = await createRoom(bob);
       const second = await createRoom(bob);
-      expect(await repo.countRoomsByHost(bob)).toBe(before + 2);
       const ids = (await repo.listRoomsByHost(bob)).map((r) => r.id);
       expect(ids.indexOf(second.id)).toBeLessThan(ids.indexOf(first.id));
       expect((await repo.listRoomsByHost(alice)).map((r) => r.id)).not.toContain(first.id);

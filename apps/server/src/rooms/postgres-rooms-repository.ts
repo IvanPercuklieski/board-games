@@ -56,19 +56,19 @@ export class PostgresRoomsRepository implements RoomsRepository {
     return row && { displayName: row.display_name };
   }
 
-  async countRoomsByHost(hostUserId: string) {
-    const [row] = await this.sql<{ n: number }[]>`
-      select count(*)::int as n from public.rooms where host_user_id = ${hostUserId}`;
-    return row!.n;
-  }
-
-  async createRoom(room: NewRoom, hostSeat: NewSeat) {
-    await this.sql.begin(async (tx) => {
+  createRoom(room: NewRoom, hostSeat: NewSeat, maxRoomsPerHost: number) {
+    return this.sql.begin(async (tx): Promise<'created' | 'limit_reached'> => {
+      // Lock the host's profile so concurrent creates for the same host are serialized.
+      await tx`select id from public.profiles where id = ${room.hostUserId} for update`;
+      const [hosted] = await tx<{ n: number }[]>`
+        select count(*)::int as n from public.rooms where host_user_id = ${room.hostUserId}`;
+      if ((hosted?.n ?? 0) >= maxRoomsPerHost) return 'limit_reached';
       await tx`
         insert into public.rooms (id, game_id, host_user_id, max_seats, invite_token_hash)
         values (${room.id}, ${room.gameId}, ${room.hostUserId}, ${room.maxSeats},
                 ${room.inviteTokenHash})`;
       await insertSeat(tx, room.id, 0, hostSeat);
+      return 'created';
     });
   }
 

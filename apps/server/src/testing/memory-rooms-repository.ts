@@ -40,11 +40,9 @@ export class MemoryRoomsRepository implements RoomsRepository {
     return displayName === undefined ? undefined : { displayName };
   }
 
-  async countRoomsByHost(hostUserId: string) {
-    return [...this.rooms.values()].filter((r) => r.hostUserId === hostUserId).length;
-  }
-
-  async createRoom(room: NewRoom, hostSeat: NewSeat) {
+  async createRoom(room: NewRoom, hostSeat: NewSeat, maxRoomsPerHost: number) {
+    const hosted = [...this.rooms.values()].filter((r) => r.hostUserId === room.hostUserId);
+    if (hosted.length >= maxRoomsPerHost) return 'limit_reached' as const;
     const now = new Date();
     this.rooms.set(room.id, {
       ...room,
@@ -54,6 +52,7 @@ export class MemoryRoomsRepository implements RoomsRepository {
       seq: this.seq++,
     });
     this.seats.set(room.id, [toSeat(0, hostSeat)]);
+    return 'created' as const;
   }
 
   async findRoom(roomId: string) {
