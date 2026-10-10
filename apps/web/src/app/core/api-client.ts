@@ -103,10 +103,17 @@ export class ApiClient {
     );
   }
 
-  async join(roomId: string, body: JoinRequest): Promise<JoinResponse> {
-    return this.call(joinResponseSchema, () => this.http.post(`/api/rooms/${roomId}/join`, body), {
-      auth: 'none',
-    });
+  /** `withAccount`: a signed-in player is seated with their account (so they can take over). */
+  async join(
+    roomId: string,
+    body: JoinRequest,
+    { withAccount = false }: { withAccount?: boolean } = {},
+  ): Promise<JoinResponse> {
+    return this.call(
+      joinResponseSchema,
+      (headers) => this.http.post(`/api/rooms/${roomId}/join`, body, { headers }),
+      { auth: withAccount ? 'host' : 'none' },
+    );
   }
 
   // --- seated players (seat credentials) ---
@@ -115,6 +122,18 @@ export class ApiClient {
       lobbyResponseSchema,
       () =>
         this.http.get(`/api/rooms/${roomId}/lobby`, {
+          headers: new HttpHeaders({ [SEAT_CREDENTIALS_HEADER]: credentials }),
+        }),
+      { auth: 'none' },
+    );
+  }
+
+  /** Leave your seat; a host's room goes to someone else (or is closed). */
+  async leave(roomId: string, credentials: string): Promise<void> {
+    await this.call(
+      null,
+      () =>
+        this.http.post(`/api/rooms/${roomId}/leave`, null, {
           headers: new HttpHeaders({ [SEAT_CREDENTIALS_HEADER]: credentials }),
         }),
       { auth: 'none' },

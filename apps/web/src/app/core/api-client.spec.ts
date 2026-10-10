@@ -76,6 +76,23 @@ describe('ApiClient', () => {
     await expect(result).resolves.toEqual({ seatIndex: 1, credentials: secret });
   });
 
+  it('joins with the login when asked to (signed-in players keep their account)', async () => {
+    const result = api.join(roomId, { token: secret, name: 'Bob' }, { withAccount: true });
+    const req = await pending('POST', `/api/rooms/${roomId}/join`);
+    expect(req.request.headers.get('Authorization')).toBe('Bearer host-token');
+    req.flush({ seatIndex: 1, credentials: secret });
+    await expect(result).resolves.toEqual({ seatIndex: 1, credentials: secret });
+  });
+
+  it('leaves a seat with the seat credentials in a header', async () => {
+    const result = api.leave(roomId, secret);
+    const req = await pending('POST', `/api/rooms/${roomId}/leave`);
+    expect(req.request.headers.get(SEAT_CREDENTIALS_HEADER)).toBe(secret);
+    expect(req.request.headers.has('Authorization')).toBe(false);
+    req.flush(null, { status: 204, statusText: 'No Content' });
+    await expect(result).resolves.toBeUndefined();
+  });
+
   it('turns API errors into ApiError with the server code and status', async () => {
     const result = api.join(roomId, { token: secret, name: 'Bob' });
     (await pending('POST', `/api/rooms/${roomId}/join`)).flush(
