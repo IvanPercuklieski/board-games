@@ -22,6 +22,26 @@ describe('toasts', () => {
     expect(screen.queryByText('Invite link copied')).toBeNull();
   });
 
+  it('announces errors right away', async () => {
+    await render(ToastOutletComponent);
+    TestBed.inject(ToastService).show({ message: 'The room couldn’t be closed.', tone: 'danger' });
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'The room couldn’t be closed.',
+    );
+  });
+
+  it('runs a toast’s action and dismisses it', async () => {
+    await render(ToastOutletComponent);
+    const run = vi.fn();
+    TestBed.inject(ToastService).show({
+      message: 'A new version is available.',
+      action: { label: 'Reload', run },
+    });
+    await userEvent.click(await screen.findByRole('button', { name: 'Reload' }));
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('A new version is available.')).toBeNull();
+  });
+
   it('removes a toast after its duration and leaves no timers behind', () => {
     vi.useFakeTimers();
     const toasts = TestBed.inject(ToastService);

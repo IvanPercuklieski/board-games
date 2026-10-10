@@ -1,8 +1,11 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { IconComponent } from '../icon/icon.component';
-import { ToastService } from './toast.service';
+import { ToastService, type ToastAction } from './toast.service';
 
-/** Renders toasts once per app, in a polite live region at the bottom of the screen. */
+/**
+ * Renders toasts once per app, in a polite live region at the bottom of the screen. Errors
+ * are role="alert", so screen readers announce them right away.
+ */
 @Component({
   selector: 'bt-toast-outlet',
   imports: [IconComponent],
@@ -10,13 +13,23 @@ import { ToastService } from './toast.service';
   template: `
     <section aria-label="Notifications" aria-live="polite" class="region">
       @for (toast of toasts.toasts(); track toast.id) {
-        <div class="toast" [class]="'toast--' + toast.tone" animate.enter="enter">
+        <div
+          class="toast"
+          [class]="'toast--' + toast.tone"
+          [attr.role]="toast.tone === 'danger' ? 'alert' : null"
+          animate.enter="enter"
+        >
           @if (toast.tone === 'success') {
             <bt-icon name="check-circle" />
           } @else if (toast.tone === 'danger') {
             <bt-icon name="warning-circle" />
           }
           <p class="message">{{ toast.message }}</p>
+          @if (toast.action; as action) {
+            <button type="button" class="action" (click)="run(toast.id, action)">
+              {{ action.label }}
+            </button>
+          }
           <button
             type="button"
             class="dismiss"
@@ -62,6 +75,21 @@ import { ToastService } from './toast.service';
       color: var(--bt-color-text);
       font-size: var(--bt-text-sm);
     }
+    .action {
+      flex: none;
+      padding: var(--bt-space-1) var(--bt-space-3);
+      border: var(--bt-border-width) solid var(--bt-color-border-strong);
+      border-radius: var(--bt-radius-sm);
+      background: var(--bt-color-surface);
+      color: var(--bt-color-text);
+      font: inherit;
+      font-size: var(--bt-text-sm);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .action:hover {
+      background: var(--bt-color-surface-sunken);
+    }
     .dismiss {
       display: grid;
       place-items: center;
@@ -90,4 +118,9 @@ import { ToastService } from './toast.service';
 })
 export class ToastOutletComponent {
   protected readonly toasts = inject(ToastService);
+
+  protected run(id: number, action: ToastAction) {
+    this.toasts.dismiss(id);
+    action.run();
+  }
 }

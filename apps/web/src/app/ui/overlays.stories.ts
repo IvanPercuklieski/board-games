@@ -13,6 +13,7 @@ import { ToastService } from './toast/toast.service';
       <button bt-button variant="danger" (click)="ask()">Close room…</button>
       <button bt-button variant="secondary" (click)="toast('success')">Show success toast</button>
       <button bt-button variant="secondary" (click)="toast('danger')">Show error toast</button>
+      <button bt-button variant="secondary" (click)="actionToast()">Show toast with action</button>
     </div>
     <p style="margin-top:var(--bt-space-4);color:var(--bt-color-text-muted)">
       Last answer: {{ answer }}
@@ -33,6 +34,14 @@ class OverlaysDemoComponent {
       tone: 'danger',
     });
     this.answer = ok ? 'confirmed' : 'cancelled';
+  }
+
+  actionToast() {
+    this.toasts.show({
+      message: 'A new version of board·table is available. Reload to continue.',
+      tone: 'danger',
+      action: { label: 'Reload', run: () => (this.answer = 'reload clicked') },
+    });
   }
 
   toast(tone: 'success' | 'danger') {

@@ -2,10 +2,17 @@ import { Injectable, signal } from '@angular/core';
 
 export type ToastTone = 'neutral' | 'success' | 'danger';
 
+/** One button on the toast, e.g. "Reload"; running it also dismisses the toast. */
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
+
 export interface Toast {
   id: number;
   message: string;
   tone: ToastTone;
+  action?: ToastAction;
 }
 
 const MAX_TOASTS = 3;
@@ -24,12 +31,14 @@ export class ToastService {
     message,
     tone = 'neutral',
     durationMs = DEFAULT_DURATION_MS,
+    action,
   }: {
     message: string;
     tone?: ToastTone;
     durationMs?: number;
+    action?: ToastAction;
   }) {
-    const toast: Toast = { id: this.nextId++, message, tone };
+    const toast: Toast = { id: this.nextId++, message, tone, ...(action && { action }) };
     const next = [...this.list(), toast];
     for (const dropped of next.slice(0, Math.max(0, next.length - MAX_TOASTS))) {
       this.clearTimer(dropped.id);
