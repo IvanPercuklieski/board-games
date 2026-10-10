@@ -1,0 +1,30 @@
+{
+  "name": "@board-table/server",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch --env-file=../../.env.dev src/main.ts",
+    "build": "node build.mjs",
+    "start": "node dist/main.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.mts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@board-table/games": "*",
+    "boardgame.io": "0.50.2",
+    "koa-static": "^5.0.0",
+    "postgres": "^3.4.9",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/koa-static": "^4.0.4",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.28.2",
+    "socket.io-client": "^4.8.4",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.2",
+    "vitest": "^5.0.0"
+  }
+}

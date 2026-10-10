@@ -12,13 +12,18 @@
   "scripts": {
     "test": "npm test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build:web && npm run build:server",
+    "start": "npm start -w @board-table/server",
     "dev:web": "npm run start -w @board-table/web",
+    "dev:server": "npm run dev -w @board-table/server",
     "build:web": "npm run build -w @board-table/web",
+    "build:server": "npm run build -w @board-table/server",
     "test:web": "npm test -w @board-table/web",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "test:integration": "npm run test:integration -w @board-table/server",
     "db:test:dev": "node scripts/db-dev.mjs test",
-    "db:push:dev": "node scripts/db-dev.mjs push"
+    "db:push:dev": "node scripts/db-dev.mjs push",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "postgres": "^3.4.9",
