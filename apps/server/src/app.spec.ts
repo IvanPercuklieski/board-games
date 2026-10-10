@@ -2,9 +2,12 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import type { RunningApp } from './app';
+import { hashSecret, newRoomId, newSecret } from './secrets';
 import { createSeatedMatch } from './testing/matches';
-import { startTestApp } from './testing/app';
+import { startTestApp, TEST_ORIGIN } from './testing/app';
+import { io } from 'socket.io-client';
 import {
   connectPlayer,
   eventually,
@@ -437,5 +440,53 @@ describe('socket security', () => {
     } finally {
       alice.stop();
     }
+  });
+});
+
+describe('websocket origin', () => {
+  /** Connects with the given Origin header (browsers always send one; Node clients don't). */
+  async function connectFrom(url: string, namespace: string, origin?: string, auth?: object) {
+    const socket = io(`${url}${namespace}`, {
+      transports: ['websocket'],
+      reconnection: false,
+      forceNew: true,
+      ...(auth && { auth }),
+      ...(origin && { extraHeaders: { origin } }),
+    });
+    const result = await new Promise<string>((resolve) => {
+      socket.on('connect', () => resolve('connected'));
+      socket.on('connect_error', () => resolve('refused'));
+    });
+    socket.disconnect();
+    return result;
+  }
+
+  it('refuses game connections from pages on other sites (cross-site websocket hijacking)', async () => {
+    const { url } = await start();
+    expect(await connectFrom(url, '/tictactoe', 'https://evil.example')).toBe('refused');
+    expect(await connectFrom(url, '/tictactoe', 'null')).toBe('refused');
+  });
+
+  it('refuses room connections from other sites even with a valid seat key', async () => {
+    const t = await startTestApp();
+    running = t.app;
+    const userId = randomUUID();
+    t.repo.addProfile(userId, 'Alice');
+    const roomId = newRoomId();
+    const credentials = newSecret();
+    await t.repo.createRoom(
+      { id: roomId, gameId: 'tictactoe', hostUserId: userId, maxSeats: 2, inviteTokenHash: 'x' },
+      { name: 'Alice', userId, credentialsHash: hashSecret(credentials) },
+      3,
+    );
+    const auth = { roomId, credentials };
+    expect(await connectFrom(t.url, '/_room', 'https://evil.example', auth)).toBe('refused');
+    expect(await connectFrom(t.url, '/_room', TEST_ORIGIN, auth)).toBe('connected');
+  });
+
+  it('accepts our own origin and clients without one', async () => {
+    const { url } = await start();
+    expect(await connectFrom(url, '/tictactoe', TEST_ORIGIN)).toBe('connected');
+    expect(await connectFrom(url, '/tictactoe')).toBe('connected');
   });
 });

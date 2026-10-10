@@ -101,7 +101,11 @@ export function createApp({
         games: gameRegistry.map((def) => def.game),
         db: gameStorage,
         origins: [config.publicOrigin],
-        transport: createSocketTransport(storage, MAX_SOCKET_MESSAGE_BYTES),
+        transport: createSocketTransport({
+          db: storage,
+          maxHttpBufferSize: MAX_SOCKET_MESSAGE_BYTES,
+          publicOrigin: config.publicOrigin,
+        }),
       });
 
       // Always require a claimed seat's credentials (stock boardgame.io skips the check

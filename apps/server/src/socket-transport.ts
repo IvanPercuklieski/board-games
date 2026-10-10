@@ -1,3 +1,4 @@
+import type { IncomingMessage } from 'node:http';
 import type { Game, StorageAPI } from 'boardgame.io';
 import { getFilterPlayerView } from 'boardgame.io/internal';
 import { SocketIO } from 'boardgame.io/server';
@@ -26,11 +27,26 @@ interface RegisteredClient {
  * stored by then) that sends the current state once more as an `update`. Clients ignore
  * updates older than what they have, so this is always safe.
  */
-export function createSocketTransport(db: StorageAPI.Async, maxHttpBufferSize: number): SocketIO {
+export function createSocketTransport({
+  db,
+  maxHttpBufferSize,
+  publicOrigin,
+}: {
+  db: StorageAPI.Async;
+  maxHttpBufferSize: number;
+  publicOrigin: string;
+}): SocketIO {
   const transport = new SocketIO({
-    // only the options we set; boardgame.io types require the full socket.io options object.
+    // Only the options we set; boardgame.io types require the full socket.io options object.
     // connectTimeout: a connection that never joins a namespace is dropped after 10 s.
-    socketOpts: { maxHttpBufferSize, connectTimeout: 10_000 } as never,
+    // allowRequest: boardgame.io's `cors` option doesn't restrict websockets, so pages on other
+    // sites could open sockets in a visitor's browser (cross-site websocket hijacking).
+    socketOpts: {
+      maxHttpBufferSize,
+      connectTimeout: 10_000,
+      allowRequest: (req: IncomingMessage, callback: (err: string | null, ok: boolean) => void) =>
+        callback(null, isAllowedOrigin(req.headers.origin, publicOrigin)),
+    } as never,
   });
   // addClient/getMatchQueue are private in boardgame.io's types; the transport calls addClient
   // via `this`, so an own property wraps it. The queue is created while the socket is
@@ -43,6 +59,15 @@ export function createSocketTransport(db: StorageAPI.Async, maxHttpBufferSize: n
     void internals.getMatchQueue(client.matchID).add(() => resendState(db, client, game));
   };
   return transport;
+}
+
+/**
+ * Browsers always send Origin on websocket requests, so a page on another site is refused.
+ * Clients without one (not a browser) can't be driven by another site and are let through;
+ * they still need a seat key for anything.
+ */
+export function isAllowedOrigin(origin: string | undefined, publicOrigin: string): boolean {
+  return origin === undefined || origin === publicOrigin;
 }
 
 async function resendState(db: StorageAPI.Async, client: RegisteredClient, game: Game) {
