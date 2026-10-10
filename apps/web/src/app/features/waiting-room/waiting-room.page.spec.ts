@@ -156,7 +156,9 @@ describe('WaitingRoomPage', () => {
       );
       expect(await screen.findByRole('button', { name: /Start game/ })).toBeTruthy();
       expect(toastMessages()).toContain('You’re the host now');
-      expect(screen.getByText(/Only the device that made the invite link can show it/)).toBeTruthy();
+      expect(
+        screen.getByText(/Only the device that made the invite link can show it/),
+      ).toBeTruthy();
     });
   });
 

@@ -132,7 +132,9 @@ export function createApp({
               : kind === 'expired'
                 ? service.seatExpired(roomId, seatKey)
                 : Promise.resolve(service.seatBack(roomId));
-          task.catch((e: unknown) => log('Presence update failed:', e instanceof Error ? e.message : e));
+          task.catch((e: unknown) =>
+            log('Presence update failed:', e instanceof Error ? e.message : e),
+          );
         },
       });
       const service = new RoomsService({

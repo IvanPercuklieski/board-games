@@ -19,7 +19,9 @@ afterEach(async () => {
   running = undefined;
 });
 
-async function setup(presence = { graceMs: GRACE, startupGraceMs: 0, freeSeatAfterMs: FREE_AFTER }) {
+async function setup(
+  presence = { graceMs: GRACE, startupGraceMs: 0, freeSeatAfterMs: FREE_AFTER },
+) {
   const t = await startTestApp({}, { presence });
   running = t.app;
   const alice = randomUUID();
@@ -73,7 +75,11 @@ async function setup(presence = { graceMs: GRACE, startupGraceMs: 0, freeSeatAft
   };
 }
 
-const reason = (client: RoomClient) => client.connected.then(() => 'connected', (e: Error) => e.message);
+const reason = (client: RoomClient) =>
+  client.connected.then(
+    () => 'connected',
+    (e: Error) => e.message,
+  );
 
 describe('room connection: access', () => {
   it('accepts only a seated player of that room', async () => {
@@ -89,9 +95,17 @@ describe('room connection: access', () => {
     expect(await reason(connectRoom(t.url, { roomId: t.roomId, credentials: newSecret() }))).toBe(
       'not_found',
     );
-    expect(await reason(connectRoom(t.url, { roomId: newRoomId(), credentials: t.host.credentials }))).toBe('not_found');
-    expect(await reason(connectRoom(t.url, { roomId: otherRoom.roomId, credentials: t.host.credentials }))).toBe('not_found');
-    expect(await reason(connectRoom(t.url, { roomId: t.roomId, credentials: t.host.credentials, x: 1 }))).toBe('not_found');
+    expect(
+      await reason(connectRoom(t.url, { roomId: newRoomId(), credentials: t.host.credentials })),
+    ).toBe('not_found');
+    expect(
+      await reason(
+        connectRoom(t.url, { roomId: otherRoom.roomId, credentials: t.host.credentials }),
+      ),
+    ).toBe('not_found');
+    expect(
+      await reason(connectRoom(t.url, { roomId: t.roomId, credentials: t.host.credentials, x: 1 })),
+    ).toBe('not_found');
     expect(await reason(t.room(t.host.credentials))).toBe('connected');
   });
 

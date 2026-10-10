@@ -276,7 +276,9 @@ export function describeRoomsRepositoryContract(
           seatIndex: 1,
           previousCredentialsHash: first.credentialsHash,
         });
-        expect(await repo.findSeatByCredentialsHash(room.id, first.credentialsHash)).toBeUndefined();
+        expect(
+          await repo.findSeatByCredentialsHash(room.id, first.credentialsHash),
+        ).toBeUndefined();
         expect(await repo.findSeatByCredentialsHash(room.id, 'bob-new')).toMatchObject({
           seatIndex: 1,
         });

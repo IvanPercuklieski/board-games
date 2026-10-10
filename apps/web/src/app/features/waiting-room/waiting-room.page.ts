@@ -471,7 +471,10 @@ export class WaitingRoomPage implements OnInit {
     () => this.lobby()?.seats.find((s) => s.isHost)?.name ?? 'the host',
   );
   private readonly awayNames = computed(
-    () => this.lobby()?.seats.filter((s) => s.away).map((s) => s.name) ?? [],
+    () =>
+      this.lobby()
+        ?.seats.filter((s) => s.away)
+        .map((s) => s.name) ?? [],
   );
   protected readonly canStart = computed(
     () => (this.lobby()?.seats.length ?? 0) >= this.minPlayers() && this.awayNames().length === 0,
@@ -656,5 +659,7 @@ export class WaitingRoomPage implements OnInit {
 
 /** "Mara", "Mara and Theo", "Mara, Theo and Jun". */
 function listNames(names: string[]): string {
-  return names.length < 2 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+  return names.length < 2
+    ? (names[0] ?? '')
+    : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
 }

@@ -385,7 +385,10 @@ describe('lobby', () => {
 
     await service.start(alice, room.roomId);
     const playing = await service.lobby(room.roomId, room.seat.credentials);
-    expect(playing).toMatchObject({ status: 'playing', you: { seatIndex: 0, isHost: true, playerID: '0' } });
+    expect(playing).toMatchObject({
+      status: 'playing',
+      you: { seatIndex: 0, isHost: true, playerID: '0' },
+    });
   });
 
   it('answers not_found for unknown credentials or another room', async () => {
