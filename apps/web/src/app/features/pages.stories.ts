@@ -7,7 +7,7 @@ import { CatalogPage } from './catalog/catalog.page';
 import { GameDetailPage } from './game-detail/game-detail.page';
 import { JoinPage } from './join/join.page';
 import { signal } from '@angular/core';
-import { AuthService } from '../core/auth.service';
+import { AuthService, type AuthUser } from '../core/auth.service';
 import { ROOM_CONNECTION_FACTORY, type RoomConnection } from '../core/room-connection';
 import { MyRoomsPage } from './my-rooms/my-rooms.page';
 import { WaitingRoomPage } from './waiting-room/waiting-room.page';
@@ -85,13 +85,30 @@ export const MyRooms: StoryObj<MyRoomsPage> = {
   decorators: [(story) => ({ ...story(), moduleMetadata: { imports: [MyRoomsPage] } })],
 };
 
-export const Join: StoryObj<JoinPage> = {
-  name: 'Join (guest)',
+const joinStory = (name: string, user: AuthUser | null): StoryObj<JoinPage> => ({
+  name,
   render: () => ({
     template: `<bt-join-page roomId="AbCdEfGhIjKlMnOpQrSt_-" fragment="t=TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" />`,
   }),
-  decorators: [(story) => ({ ...story(), moduleMetadata: { imports: [JoinPage] } })],
-};
+  decorators: [
+    applicationConfig({
+      providers: [
+        {
+          provide: AuthService,
+          useValue: { isSignedIn: signal(user !== null), user: signal(user) },
+        },
+      ],
+    }),
+    (story) => ({ ...story(), moduleMetadata: { imports: [JoinPage] } }),
+  ],
+});
+
+export const Join = joinStory('Join (signed out: guest or log in)', null);
+export const JoinSignedIn = joinStory('Join (signed in)', {
+  id: 'u1',
+  email: 'mara@example.test',
+  displayName: 'Mara Lind',
+});
 
 const ROOM = 'AbCdEfGhIjKlMnOpQrSt_-';
 const lobbyFor = (seatIndex: number, { away = false } = {}): LobbyResponse => ({

@@ -5,7 +5,10 @@ const roomId = 'AbCdEfGhIjKlMnOpQrSt_-';
 const credentials = 'A'.repeat(43);
 
 describe('SeatStore', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
   afterEach(() => vi.restoreAllMocks());
 
   it('remembers the seat for a room', () => {
@@ -20,6 +23,24 @@ describe('SeatStore', () => {
     expect(TestBed.inject(SeatStore).seat(roomId)).toBeUndefined();
     localStorage.setItem(`bt-seat:${roomId}`, 'not json');
     expect(TestBed.inject(SeatStore).seat(roomId)).toBeUndefined();
+  });
+
+  it('keeps an invite token across a login, in this tab only, and hands it out once', () => {
+    const store = TestBed.inject(SeatStore);
+    store.stashInviteToken(roomId, 'T'.repeat(43));
+    expect(localStorage.length).toBe(0); // never in localStorage
+    expect(store.takeInviteToken(roomId)).toBe('T'.repeat(43));
+    expect(store.takeInviteToken(roomId)).toBeUndefined();
+    expect(store.takeInviteToken('BbCdEfGhIjKlMnOpQrSt_-')).toBeUndefined();
+  });
+
+  it('works without session storage (nothing kept)', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    const store = TestBed.inject(SeatStore);
+    store.stashInviteToken(roomId, 'x');
+    expect(store.takeInviteToken(roomId)).toBeUndefined();
   });
 
   it("remembers the host's latest invite link", () => {

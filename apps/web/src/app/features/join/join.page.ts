@@ -9,8 +9,9 @@ import {
   type OnInit,
 } from '@angular/core';
 import { Router } from '@angular/router';
-import { playerNameSchema, type PreviewResponse } from '@board-table/shared';
+import { LIMITS, playerNameSchema, type PreviewResponse } from '@board-table/shared';
 import { ApiClient, ApiError } from '../../core/api-client';
+import { AuthService } from '../../core/auth.service';
 import { asyncAction } from '../../core/async-action';
 import { ErrorService } from '../../core/error.service';
 import { SeatStore } from '../../core/seat-store';
@@ -28,7 +29,11 @@ export function tokenFromFragment(fragment: string | null | undefined): string |
   return new URLSearchParams(fragment ?? '').get('t');
 }
 
-/** Guests arrive here from an invite link, pick a name and take a free seat. */
+/**
+ * Players arrive here from an invite link and take a free seat: signed out, either as a guest
+ * (just a name) or after logging in; signed in, with their account (so they can take over as
+ * host later).
+ */
 @Component({
   selector: 'bt-join-page',
   imports: [
@@ -55,25 +60,38 @@ export function tokenFromFragment(fragment: string | null | undefined): string |
               <p class="game">{{ preview.gameName }}</p>
               <p class="seats">{{ seatsText() }}</p>
 
-              <form class="form" novalidate (submit)="join($event)">
-                <bt-text-field
-                  label="Your name"
-                  hint="Shown to the other players."
-                  [error]="showErrors() ? nameError() : null"
-                >
-                  <input
-                    btInput
-                    name="name"
-                    autocomplete="nickname"
-                    maxlength="24"
-                    [value]="name()"
-                    (input)="name.set(value($event))"
-                  />
-                </bt-text-field>
-                <button bt-button type="submit" size="lg" [loading]="joinAction.busy()">
-                  Take a seat
-                </button>
-              </form>
+              @if (!signedIn() && !asGuest()) {
+                <div class="choice">
+                  <button bt-button size="lg" (click)="asGuest.set(true)">Continue as guest</button>
+                  <button bt-button variant="secondary" size="lg" (click)="logIn()">
+                    Log in to join
+                  </button>
+                  <p class="note">With an account you can take over as host if the host leaves.</p>
+                </div>
+              } @else {
+                <form class="form" novalidate (submit)="join($event)">
+                  <bt-text-field
+                    label="Your name"
+                    hint="Shown to the other players."
+                    [error]="showErrors() ? nameError() : null"
+                  >
+                    <input
+                      btInput
+                      name="name"
+                      autocomplete="nickname"
+                      maxlength="24"
+                      [value]="name()"
+                      (input)="name.set(value($event))"
+                    />
+                  </bt-text-field>
+                  @if (signedIn()) {
+                    <p class="note">You join with your account.</p>
+                  }
+                  <button bt-button type="submit" size="lg" [loading]="joinAction.busy()">
+                    Take a seat
+                  </button>
+                </form>
+              }
             </bt-card>
           }
         }
@@ -137,10 +155,18 @@ export function tokenFromFragment(fragment: string | null | undefined): string |
       color: var(--bt-color-text-muted);
       font-size: var(--bt-text-sm);
     }
-    .form {
+    .form,
+    .choice {
       display: grid;
       gap: var(--bt-space-4);
       margin-top: var(--bt-space-3);
+    }
+    .choice {
+      gap: var(--bt-space-3);
+    }
+    .note {
+      color: var(--bt-color-text-muted);
+      font-size: var(--bt-text-sm);
     }
   `,
 })
@@ -154,17 +180,25 @@ export class JoinPage implements OnInit {
   private readonly seatStore = inject(SeatStore);
   private readonly router = inject(Router);
   private readonly location = inject(Location);
+  private readonly auth = inject(AuthService);
 
   protected readonly state = signal<State>('loading');
   protected readonly preview = signal<PreviewResponse | null>(null);
   protected readonly name = signal('');
   protected readonly showErrors = signal(false);
+  protected readonly signedIn = this.auth.isSignedIn;
+  /** A signed-out player chose to join without an account. */
+  protected readonly asGuest = signal(false);
   private readonly errors = inject(ErrorService);
   private token: string | null = null;
 
   protected readonly joinAction = asyncAction(
     async (token: string, name: string) => {
-      const seat = await this.api.join(this.roomId(), { token, name });
+      const seat = await this.api.join(
+        this.roomId(),
+        { token, name },
+        { withAccount: this.signedIn() },
+      );
       this.seatStore.saveSeat(this.roomId(), seat);
       await this.router.navigateByUrl(`/rooms/${this.roomId()}`);
     },
@@ -187,9 +221,14 @@ export class JoinPage implements OnInit {
       void this.router.navigateByUrl(`/rooms/${this.roomId()}`);
       return;
     }
-    this.token = tokenFromFragment(this.fragment());
+    // From the link, or kept for this tab while the player logged in.
+    this.token =
+      tokenFromFragment(this.fragment()) ?? this.seatStore.takeInviteToken(this.roomId()) ?? null;
     // Keep the secret out of the address bar (screen sharing, screenshots).
     this.location.replaceState(`/join/${this.roomId()}`);
+    const displayName = this.auth.user()?.displayName;
+    if (displayName)
+      this.name.set([...displayName.trim()].slice(0, LIMITS.playerNameMaxLength).join(''));
     void this.load();
   }
 
@@ -213,6 +252,14 @@ export class JoinPage implements OnInit {
 
   protected value(event: Event) {
     return (event.target as HTMLInputElement).value;
+  }
+
+  /** Log in first; the token waits in this tab (never in the login URL) and we come back. */
+  protected async logIn() {
+    if (!this.token) return;
+    this.seatStore.stashInviteToken(this.roomId(), this.token);
+    const next = encodeURIComponent(`/join/${this.roomId()}`);
+    await this.router.navigateByUrl(`/login?next=${next}`);
   }
 
   protected async join(event: Event) {

@@ -5,6 +5,7 @@ export type StoredSeat = SeatCredentials;
 
 const seatKey = (roomId: string) => `bt-seat:${roomId}`;
 const inviteKey = (roomId: string) => `bt-invite:${roomId}`;
+const pendingTokenKey = (roomId: string) => `bt-join-token:${roomId}`;
 
 /**
  * Remembers this browser's seat (and, for hosts, the latest invite link) per room.
@@ -33,6 +34,29 @@ export class SeatStore {
 
   saveInviteUrl(roomId: string, url: string) {
     write(inviteKey(roomId), url);
+  }
+
+  /**
+   * Keeps an invite token while the player logs in before joining. Session storage (this tab
+   * only, gone when it closes), never the login URL: query strings reach the server.
+   */
+  stashInviteToken(roomId: string, token: string) {
+    try {
+      sessionStorage.setItem(pendingTokenKey(roomId), token);
+    } catch {
+      // storage blocked: after logging in the player opens the invite link again
+    }
+  }
+
+  /** The stashed invite token, removed as it is read. */
+  takeInviteToken(roomId: string): string | undefined {
+    try {
+      const token = sessionStorage.getItem(pendingTokenKey(roomId)) ?? undefined;
+      sessionStorage.removeItem(pendingTokenKey(roomId));
+      return token;
+    } catch {
+      return undefined; // storage blocked: nothing was kept
+    }
   }
 
   forget(roomId: string) {
