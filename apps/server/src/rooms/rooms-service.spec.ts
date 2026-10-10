@@ -8,6 +8,7 @@ import {
   previewResponseSchema,
   type ApiErrorCode,
 } from '@board-table/shared';
+import { getGameDefinition, type GameDefinition } from '@board-table/games';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { hashSecret, newRoomId, newSecret } from '../secrets';
 import { MemoryRoomsRepository } from '../testing/memory-rooms-repository';
@@ -25,12 +26,19 @@ let bob: string;
 beforeEach(() => {
   storage = new MemoryStorage();
   repo = new MemoryRoomsRepository(storage);
-  service = new RoomsService({ repo, publicOrigin: ORIGIN });
+  service = new RoomsService({ repo, publicOrigin: ORIGIN, findGame });
   alice = randomUUID();
   bob = randomUUID();
   repo.addProfile(alice, 'Alice');
   repo.addProfile(bob, 'Bob');
 });
+
+/** The registry plus two made-up games with other player ranges (only rules are fake). */
+const extraGames: GameDefinition[] = [
+  { id: 'party', displayName: 'Party', minPlayers: 3, maxPlayers: 6, game: { name: 'party' } },
+  { id: 'solo', displayName: 'Solo', minPlayers: 1, maxPlayers: 1, game: { name: 'solo' } },
+];
+const findGame = (id: string) => getGameDefinition(id) ?? extraGames.find((g) => g.id === id);
 
 async function failsWith(promise: Promise<unknown>, code: ApiErrorCode) {
   await expect(promise).rejects.toThrow(ApiFailure);
@@ -128,6 +136,58 @@ describe('listRooms', () => {
         { seatIndex: 1, name: 'Bob', isHost: false },
       ],
     });
+  });
+});
+
+describe('changeGame', () => {
+  it('switches a waiting room to another game and seat count', async () => {
+    const room = await aliceRoom(2);
+    const bobSeat = await service.join(room.roomId, { token: room.token, name: 'Bob' });
+
+    const summary = await service.changeGame(alice, room.roomId, { gameId: 'party', maxSeats: 4 });
+    expect(listRoomsResponseSchema.parse({ rooms: [summary] }).rooms[0]).toEqual(summary);
+    expect(summary).toMatchObject({ roomId: room.roomId, gameId: 'party', maxSeats: 4 });
+    expect(await service.lobby(room.roomId, bobSeat.credentials)).toMatchObject({
+      gameId: 'party',
+      maxSeats: 4,
+      status: 'waiting',
+    });
+  });
+
+  it('refuses when the seated players do not fit the new game', async () => {
+    const room = await aliceRoom(2);
+    await service.join(room.roomId, { token: room.token, name: 'Bob' });
+    await failsWith(
+      service.changeGame(alice, room.roomId, { gameId: 'solo', maxSeats: 1 }),
+      'too_many_players',
+    );
+    expect((await repo.findRoom(room.roomId))!.gameId).toBe('tictactoe');
+  });
+
+  it.each([
+    { gameId: 'no-such-game', maxSeats: 2 },
+    { gameId: 'party', maxSeats: 2 },
+    { gameId: 'party', maxSeats: 7 },
+  ])('rejects an unknown game or a seat count outside its range: %j', async (req) => {
+    const room = await aliceRoom(2);
+    await failsWith(service.changeGame(alice, room.roomId, req), 'validation_error');
+  });
+
+  it('is locked while a game is running', async () => {
+    const room = await aliceRoom(2);
+    await service.join(room.roomId, { token: room.token, name: 'Bob' });
+    await service.start(alice, room.roomId);
+    await failsWith(
+      service.changeGame(alice, room.roomId, { gameId: 'party', maxSeats: 3 }),
+      'room_locked',
+    );
+  });
+
+  it('answers not_found to anyone but the host', async () => {
+    const room = await aliceRoom(2);
+    const req = { gameId: 'party', maxSeats: 3 };
+    await failsWith(service.changeGame(bob, room.roomId, req), 'not_found');
+    await failsWith(service.changeGame(alice, newRoomId(), req), 'not_found');
   });
 });
 

@@ -35,10 +35,15 @@ export const seatInfoSchema = z.object({
 
 // --- requests (strict: unknown fields are rejected) -----------------------------
 
-export const createRoomRequestSchema = z.strictObject({
+/** Which game a room plays and how many seats it has (creating a room or changing its game). */
+const roomGameSchema = z.strictObject({
   gameId: gameIdSchema,
   maxSeats: z.int().check(z.minimum(1), z.maximum(LIMITS.maxSeats)),
 });
+
+export const createRoomRequestSchema = roomGameSchema;
+
+export const updateRoomRequestSchema = roomGameSchema;
 
 export const previewRequestSchema = z.strictObject({
   token: secretSchema,
@@ -116,6 +121,7 @@ export const apiErrorCodeSchema = z.enum([
   'invalid_invite',
   'room_full',
   'room_locked',
+  'too_many_players',
   'limit_reached',
   'validation_error',
   'rate_limited',
@@ -137,6 +143,7 @@ export type RoomStatus = z.infer<typeof roomStatusSchema>;
 export type SeatInfo = z.infer<typeof seatInfoSchema>;
 export type SeatCredentials = z.infer<typeof seatCredentialsSchema>;
 export type CreateRoomRequest = z.infer<typeof createRoomRequestSchema>;
+export type UpdateRoomRequest = z.infer<typeof updateRoomRequestSchema>;
 export type CreateRoomResponse = z.infer<typeof createRoomResponseSchema>;
 export type RoomSummary = z.infer<typeof roomSummarySchema>;
 export type ListRoomsResponse = z.infer<typeof listRoomsResponseSchema>;

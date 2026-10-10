@@ -4,6 +4,7 @@ import {
   createRoomRequestSchema,
   createRoomResponseSchema,
   joinRequestSchema,
+  updateRoomRequestSchema,
   joinResponseSchema,
   listRoomsResponseSchema,
   lobbyResponseSchema,
@@ -78,6 +79,18 @@ describe('request schemas', () => {
     { gameId: 'tictactoe', maxSeats: 2, hostUserId: 'someone-else' },
   ])('rejects invalid create-room request %j', (body) => {
     expect(createRoomRequestSchema.safeParse(body).success).toBe(false);
+  });
+
+  it('parses a change-game request with the same rules as creating a room', () => {
+    expect(updateRoomRequestSchema.parse({ gameId: 'tictactoe', maxSeats: 2 })).toEqual({
+      gameId: 'tictactoe',
+      maxSeats: 2,
+    });
+    expect(updateRoomRequestSchema.safeParse({ gameId: 'tictactoe' }).success).toBe(false);
+    expect(
+      updateRoomRequestSchema.safeParse({ gameId: 'tictactoe', maxSeats: 2, status: 'waiting' })
+        .success,
+    ).toBe(false);
   });
 
   it('parses join and preview requests and trims the name', () => {
@@ -198,6 +211,7 @@ describe('apiErrorSchema', () => {
     'invalid_invite',
     'room_full',
     'room_locked',
+    'too_many_players',
     'limit_reached',
     'validation_error',
     'rate_limited',

@@ -131,15 +131,23 @@ export class MemoryRoomsRepository implements RoomsRepository {
     const seats = this.seatsOf(roomId);
     const match = build(seats.map((s) => ({ name: s.name, credentialsHash: s.credentialsHash })));
 
-    this.seats.set(
-      roomId,
-      seats.map((s, index) => ({ ...s, seatIndex: index })),
-    );
+    this.compactSeats(roomId);
     room.status = 'playing';
     room.maxSeats = seats.length;
     room.lastActivityAt = new Date();
     await this.storage.createMatch(roomId, match);
     return 'started' as const;
+  }
+
+  async updateRoomGame(roomId: string, gameId: string, maxSeats: number) {
+    const room = this.rooms.get(roomId);
+    if (room?.status !== 'waiting') return 'not_waiting' as const;
+    if (this.seatsOf(roomId).length > maxSeats) return 'too_many_players' as const;
+    this.compactSeats(roomId);
+    room.gameId = gameId;
+    room.maxSeats = maxSeats;
+    room.lastActivityAt = new Date();
+    return 'updated' as const;
   }
 
   async touch(roomId: string) {
@@ -168,6 +176,13 @@ export class MemoryRoomsRepository implements RoomsRepository {
     return [...this.rooms.values()]
       .filter((r) => r.lastActivityAt.getTime() < cutoff[r.status].getTime())
       .map((r) => r.id);
+  }
+
+  private compactSeats(roomId: string) {
+    this.seats.set(
+      roomId,
+      this.seatsOf(roomId).map((s, index) => ({ ...s, seatIndex: index })),
+    );
   }
 
   private seatsOf(roomId: string): SeatRecord[] {

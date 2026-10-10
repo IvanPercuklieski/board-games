@@ -159,21 +159,28 @@ export class PostgresRoomsRepository implements RoomsRepository {
         seats.map((s) => ({ name: s.name, credentialsHash: s.credentials_hash })),
       );
 
-      // Renumber seats 0..n-1 in their current order (delete + reinsert keeps the PK simple).
-      await tx`delete from public.room_seats where room_id = ${roomId}`;
-      for (const [index, s] of seats.entries()) {
-        await insertSeat(tx, roomId, index, {
-          name: s.name,
-          userId: s.user_id,
-          credentialsHash: s.credentials_hash,
-        });
-      }
+      await compactSeats(tx, roomId, seats);
       await tx`
         update public.rooms
         set status = 'playing', max_seats = ${seats.length}, last_activity_at = now()
         where id = ${roomId}`;
       await insertMatchInDb(tx, roomId, match);
       return 'started';
+    });
+  }
+
+  updateRoomGame(roomId: string, gameId: string, maxSeats: number) {
+    return this.sql.begin(async (tx): Promise<'updated' | 'not_waiting' | 'too_many_players'> => {
+      const room = await lockRoom(tx, roomId);
+      if (room?.status !== 'waiting') return 'not_waiting';
+      const seats = await selectSeats(tx, roomId);
+      if (seats.length > maxSeats) return 'too_many_players';
+      await compactSeats(tx, roomId, seats);
+      await tx`
+        update public.rooms
+        set game_id = ${gameId}, max_seats = ${maxSeats}, last_activity_at = now()
+        where id = ${roomId}`;
+      return 'updated';
     });
   }
 
@@ -223,6 +230,18 @@ function selectSeats(sql: Sql | Tx, roomId: string) {
   return sql<SeatRow[]>`
     select seat_index, name, user_id, credentials_hash from public.room_seats
     where room_id = ${roomId} order by seat_index`;
+}
+
+/** Renumbers seats 0..n-1 in their current order (delete + reinsert keeps the PK simple). */
+async function compactSeats(tx: Tx, roomId: string, seats: SeatRow[]) {
+  await tx`delete from public.room_seats where room_id = ${roomId}`;
+  for (const [index, s] of seats.entries()) {
+    await insertSeat(tx, roomId, index, {
+      name: s.name,
+      userId: s.user_id,
+      credentialsHash: s.credentials_hash,
+    });
+  }
 }
 
 async function insertSeat(tx: Tx, roomId: string, seatIndex: number, seat: NewSeat) {

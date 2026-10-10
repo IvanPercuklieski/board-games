@@ -256,6 +256,46 @@ export function describeRoomsRepositoryContract(
       expect((await storage.fetch(room.id, { state: true })).state).toBeUndefined();
     });
 
+    describe('changing the game of a waiting room', () => {
+      it('sets game and seat count, compacting the seats first', async () => {
+        const room = await createRoom(alice, 3);
+        await repo.takeFreeSeat(room.id, guest('Bob'));
+        await repo.takeFreeSeat(room.id, guest('Carol'));
+        await repo.freeSeat(room.id, 1); // seats 0 and 2 remain
+
+        await expectActivity(room.id, async () =>
+          expect(await repo.updateRoomGame(room.id, 'other-game', 2)).toBe('updated'),
+        );
+        expect(await repo.findRoom(room.id)).toMatchObject({
+          gameId: 'other-game',
+          maxSeats: 2,
+          status: 'waiting',
+        });
+        expect((await repo.listSeats(room.id)).map((s) => [s.seatIndex, s.name])).toEqual([
+          [0, 'Host'],
+          [1, 'Carol'],
+        ]);
+      });
+
+      it('refuses when more players are seated than the new seat count', async () => {
+        const room = await createRoom(alice, 3);
+        await repo.takeFreeSeat(room.id, guest('Bob'));
+        await repo.takeFreeSeat(room.id, guest('Carol'));
+        expect(await repo.updateRoomGame(room.id, 'other-game', 2)).toBe('too_many_players');
+        expect(await repo.findRoom(room.id)).toMatchObject({ gameId: 'tictactoe', maxSeats: 3 });
+        expect(await repo.listSeats(room.id)).toHaveLength(3);
+      });
+
+      it('refuses while a game is running or for an unknown room', async () => {
+        const room = await createRoom(alice);
+        await repo.takeFreeSeat(room.id, guest('Bob'));
+        await repo.startRoom(room.id, (seats) => buildMatch('tictactoe', seats));
+        expect(await repo.updateRoomGame(room.id, 'other-game', 2)).toBe('not_waiting');
+        expect(await repo.updateRoomGame(newRoomId(), 'other-game', 2)).toBe('not_waiting');
+        expect((await repo.findRoom(room.id))!.gameId).toBe('tictactoe');
+      });
+    });
+
     describe('finishing a game', () => {
       async function startedRoom() {
         const room = await createRoom(alice, 3);

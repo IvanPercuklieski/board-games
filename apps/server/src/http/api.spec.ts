@@ -6,6 +6,7 @@ import {
   listRoomsResponseSchema,
   lobbyResponseSchema,
   previewResponseSchema,
+  roomSummarySchema,
   SEAT_CREDENTIALS_HEADER,
   type ApiErrorCode,
   type CreateRoomResponse,
@@ -408,6 +409,70 @@ describe('rooms flow', () => {
       }),
       404,
       'not_found',
+    );
+  });
+});
+
+describe('changing the game (PATCH /api/rooms/:id)', () => {
+  const patch = (c: Ctx, roomId: string, headers: Record<string, string>, json: unknown) =>
+    api(c.url, `/api/rooms/${roomId}`, { method: 'PATCH', headers, json });
+
+  it('lets the host change game and seat count while waiting, and returns the room', async () => {
+    const c = await setup();
+    const room = await createRoom(c, c.aliceToken);
+    const res = await patch(c, room.roomId, bearer(c.aliceToken), {
+      gameId: 'tictactoe',
+      maxSeats: 2,
+    });
+    expect(res.status).toBe(200);
+    expect(roomSummarySchema.parse(await res.json())).toMatchObject({
+      roomId: room.roomId,
+      gameId: 'tictactoe',
+      maxSeats: 2,
+      status: 'waiting',
+    });
+  });
+
+  it('is only for the host of the room', async () => {
+    const c = await setup();
+    const room = await createRoom(c, c.aliceToken);
+    const body = { gameId: 'tictactoe', maxSeats: 2 };
+    await expectError(await patch(c, room.roomId, {}, body), 401, 'unauthorized');
+    const mallory = randomUUID();
+    c.repo.addProfile(mallory, 'Mallory');
+    await expectError(
+      await patch(c, room.roomId, bearer(await c.tokenFor(mallory)), body),
+      404,
+      'not_found',
+    );
+  });
+
+  it.each([
+    { gameId: 'tictactoe' },
+    { gameId: 'no-such-game', maxSeats: 2 },
+    { gameId: 'tictactoe', maxSeats: 3 },
+  ])('rejects an invalid change %j', async (body) => {
+    const c = await setup();
+    const room = await createRoom(c, c.aliceToken);
+    await expectError(
+      await patch(c, room.roomId, bearer(c.aliceToken), body),
+      400,
+      'validation_error',
+    );
+  });
+
+  it('is locked while a game is running', async () => {
+    const c = await setup();
+    const room = await createRoom(c, c.aliceToken);
+    await join(c, room, 'Bob');
+    await api(c.url, `/api/rooms/${room.roomId}/start`, {
+      method: 'POST',
+      headers: bearer(c.aliceToken),
+    });
+    await expectError(
+      await patch(c, room.roomId, bearer(c.aliceToken), { gameId: 'tictactoe', maxSeats: 2 }),
+      409,
+      'room_locked',
     );
   });
 });

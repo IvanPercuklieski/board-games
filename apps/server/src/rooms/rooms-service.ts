@@ -1,4 +1,4 @@
-import { getGameDefinition } from '@board-table/games';
+import { getGameDefinition, type GameDefinition } from '@board-table/games';
 import {
   LIMITS,
   type ApiErrorCode,
@@ -10,8 +10,10 @@ import {
   type ListRoomsResponse,
   type LobbyResponse,
   type PreviewResponse,
+  type RoomSummary,
   type SeatCredentials,
   type SeatInfo,
+  type UpdateRoomRequest,
 } from '@board-table/shared';
 import { buildMatch, MatchError } from '../matches';
 import { hashSecret, newRoomId, newSecret } from '../secrets';
@@ -34,19 +36,24 @@ export class RoomsService {
   private readonly repo: RoomsRepository;
   private readonly publicOrigin: string;
   private readonly seatEvents: SeatEvents;
+  private readonly findGame: (gameId: string) => GameDefinition | undefined;
 
   constructor({
     repo,
     publicOrigin,
     seatEvents = new SeatEvents(),
+    findGame = getGameDefinition,
   }: {
     repo: RoomsRepository;
     publicOrigin: string;
     seatEvents?: SeatEvents;
+    /** The game registry; tests add games with other player ranges. */
+    findGame?: (gameId: string) => GameDefinition | undefined;
   }) {
     this.repo = repo;
     this.publicOrigin = publicOrigin;
     this.seatEvents = seatEvents;
+    this.findGame = findGame;
   }
 
   // --- hosts ---------------------------------------------------------------------
@@ -54,10 +61,7 @@ export class RoomsService {
   async createRoom(userId: string, req: CreateRoomRequest): Promise<CreateRoomResponse> {
     const profile = await this.repo.findProfile(userId);
     if (!profile) throw new ApiFailure('forbidden');
-    const game = getGameDefinition(req.gameId);
-    if (!game || req.maxSeats < game.minPlayers || req.maxSeats > game.maxPlayers) {
-      throw new ApiFailure('validation_error');
-    }
+    const game = this.validGame(req);
     const roomId = newRoomId();
     const token = newSecret();
     const credentials = newSecret();
@@ -86,18 +90,17 @@ export class RoomsService {
 
   async listRooms(userId: string): Promise<ListRoomsResponse> {
     const rooms = await this.repo.listRoomsByHost(userId);
-    return {
-      rooms: await Promise.all(
-        rooms.map(async (room) => ({
-          roomId: room.id,
-          gameId: room.gameId,
-          status: room.status,
-          maxSeats: room.maxSeats,
-          seats: (await this.repo.listSeats(room.id)).map(toSeatInfo),
-          createdAt: room.createdAt.toISOString(),
-        })),
-      ),
-    };
+    return { rooms: await Promise.all(rooms.map((room) => this.summary(room))) };
+  }
+
+  /** Switches a waiting room to another game; the seated players must fit its seat count. */
+  async changeGame(userId: string, roomId: string, req: UpdateRoomRequest): Promise<RoomSummary> {
+    await this.hostedRoom(userId, roomId);
+    const game = this.validGame(req);
+    const result = await this.repo.updateRoomGame(roomId, game.id, req.maxSeats);
+    if (result === 'not_waiting') throw new ApiFailure('room_locked');
+    if (result === 'too_many_players') throw new ApiFailure('too_many_players');
+    return this.summary(await this.hostedRoom(userId, roomId));
   }
 
   async regenerateInvite(userId: string, roomId: string): Promise<InviteResponse> {
@@ -154,7 +157,7 @@ export class RoomsService {
     const seats = await this.repo.listSeats(roomId);
     return {
       gameId: room.gameId,
-      gameName: getGameDefinition(room.gameId)?.displayName ?? room.gameId,
+      gameName: this.findGame(room.gameId)?.displayName ?? room.gameId,
       hostName: seats.find((s) => s.seatIndex === 0)?.name ?? '',
       status: room.status,
       maxSeats: room.maxSeats,
@@ -195,6 +198,26 @@ export class RoomsService {
   }
 
   // --- helpers -------------------------------------------------------------------
+
+  /** The game, if it exists and `maxSeats` is within its player range. */
+  private validGame({ gameId, maxSeats }: { gameId: string; maxSeats: number }) {
+    const game = this.findGame(gameId);
+    if (!game || maxSeats < game.minPlayers || maxSeats > game.maxPlayers) {
+      throw new ApiFailure('validation_error');
+    }
+    return game;
+  }
+
+  private async summary(room: RoomRecord): Promise<RoomSummary> {
+    return {
+      roomId: room.id,
+      gameId: room.gameId,
+      status: room.status,
+      maxSeats: room.maxSeats,
+      seats: (await this.repo.listSeats(room.id)).map(toSeatInfo),
+      createdAt: room.createdAt.toISOString(),
+    };
+  }
 
   /** The room if `userId` hosts it; otherwise not_found (no probing of other hosts' rooms). */
   private async hostedRoom(userId: string, roomId: string): Promise<RoomRecord> {

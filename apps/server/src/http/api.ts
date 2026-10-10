@@ -5,6 +5,7 @@ import {
   roomIdSchema,
   SEAT_CREDENTIALS_HEADER,
   secretSchema,
+  updateRoomRequestSchema,
   type ApiErrorCode,
   type Infer,
   type PublicConfig,
@@ -34,6 +35,7 @@ const STATUS: Record<ApiErrorCode, number> = {
   invalid_invite: 404,
   room_full: 409,
   room_locked: 409,
+  too_many_players: 409,
   limit_reached: 409,
   validation_error: 400,
   rate_limited: 429,
@@ -127,6 +129,11 @@ function buildRoutes({ service, verifier, limiter, publicConfig }: ApiDeps): Rou
       const userId = await requireHost(ctx);
       await service.freeSeat(userId, roomId(id), seatIndex(seat));
       ctx.status = 204;
+    }),
+    route('PATCH', `/api/rooms/${ROOM}`, async (ctx, [id]) => {
+      const userId = await requireHost(ctx);
+      const body = await readJson(ctx, updateRoomRequestSchema);
+      ctx.body = await service.changeGame(userId, roomId(id), body);
     }),
     route('DELETE', `/api/rooms/${ROOM}`, async (ctx, [id]) => {
       await service.closeRoom(await requireHost(ctx), roomId(id));

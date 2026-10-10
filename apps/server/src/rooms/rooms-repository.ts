@@ -89,6 +89,15 @@ export interface RoomsRepository {
    * throws, nothing changes and the error is rethrown.
    */
   startRoom(roomId: string, build: MatchBuilder): Promise<'started' | 'not_waiting'>;
+  /**
+   * Changes the game and seat count of a waiting room. Seats are renumbered 0..n-1 first
+   * (keeping their order), so it only fails when more players are seated than `maxSeats`.
+   */
+  updateRoomGame(
+    roomId: string,
+    gameId: string,
+    maxSeats: number,
+  ): Promise<'updated' | 'not_waiting' | 'too_many_players'>;
   touch(roomId: string): Promise<void>;
   /**
    * The game is over: deletes the boardgame.io match and puts the room back to `waiting`
