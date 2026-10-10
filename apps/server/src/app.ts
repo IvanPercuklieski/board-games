@@ -5,9 +5,15 @@ import { gameRegistry } from '@board-table/games';
 import { Server, SocketIO } from 'boardgame.io/server';
 import type { Middleware } from 'koa';
 import serve from 'koa-static';
+import { createSupabaseAccessTokenVerifier, type AccessTokenVerifier } from './auth/access-token';
 import type { ServerConfig } from './config';
-import { guardSockets, isSeatOwner } from './socket-security';
 import { createSql } from './db';
+import { apiMiddleware } from './http/api';
+import { RateLimiter } from './http/rate-limiter';
+import { PostgresRoomsRepository } from './rooms/postgres-rooms-repository';
+import type { RoomsRepository } from './rooms/rooms-repository';
+import { RoomsService } from './rooms/rooms-service';
+import { guardSockets, isSeatOwner } from './socket-security';
 import type { GameStorage } from './storage/game-storage';
 import { PostgresStorage } from './storage/postgres-storage';
 
@@ -20,17 +26,39 @@ export interface RunningApp {
   stop(): Promise<void>;
 }
 
+/** What the app needs from the outside world; tests pass in-memory versions. */
+export interface AppDeps {
+  storage: GameStorage;
+  repo: RoomsRepository;
+  verifier: AccessTokenVerifier;
+}
+
+/** Production dependencies: one Postgres pool shared by storage and rooms; owned by the app. */
+function productionDeps(config: ServerConfig): AppDeps & { close(): Promise<void> } {
+  const sql = createSql(config.databaseUrl);
+  const storage = new PostgresStorage(sql);
+  return {
+    storage,
+    repo: new PostgresRoomsRepository(sql),
+    verifier: createSupabaseAccessTokenVerifier(config.supabaseUrl),
+    async close() {
+      await storage.close(); // drain in-flight game writes first
+      await sql.end({ timeout: 5 });
+    },
+  };
+}
+
 /**
  * The single web service: boardgame.io websockets, our HTTP endpoints and the built web app.
  *
  * Requests are handled by an allow-list of our own middleware and never fall through to
  * boardgame.io's built-in lobby REST API (create/list/join/leave matches), which is public
- * by design. Rooms and seats are managed by our own code instead (see matches.ts).
+ * by design. Rooms and seats are managed by our own code instead (see rooms/).
  */
-export function createApp({ config, db }: { config: ServerConfig; db?: GameStorage }) {
-  // Tests inject in-memory storage; otherwise the app owns one Postgres pool.
-  const sql = db ? undefined : createSql(config.databaseUrl);
-  const storage: GameStorage = db ?? new PostgresStorage(sql!);
+export function createApp({ config, deps }: { config: ServerConfig; deps?: AppDeps }) {
+  const { storage, repo, verifier, close } = deps
+    ? { ...deps, close: async () => {} }
+    : productionDeps(config);
 
   return {
     async start(): Promise<RunningApp> {
@@ -49,8 +77,26 @@ export function createApp({ config, db }: { config: ServerConfig; db?: GameStora
       server.auth.authenticateCredentials = ({ playerID, credentials, metadata }) =>
         isSeatOwner(metadata, playerID, credentials);
 
+      // Behind Render's proxy: client IP = last X-Forwarded-For entry (added by the proxy).
+      server.app.proxy = config.trustProxy;
+      server.app.maxIpsCount = 1;
+
+      const limiter = new RateLimiter();
+      limiter.start();
+
       server.app.use(securityHeaders);
       server.app.use(healthCheck);
+      server.app.use(
+        apiMiddleware({
+          service: new RoomsService({ repo, publicOrigin: config.publicOrigin }),
+          verifier,
+          limiter,
+          publicConfig: {
+            supabaseUrl: config.supabaseUrl,
+            supabaseAnonKey: config.supabaseAnonKey,
+          },
+        }),
+      );
       if (config.webDistDir) {
         server.app.use(serve(config.webDistDir, { index: 'index.html' }));
         server.app.use(spaFallback(config.webDistDir));
@@ -76,10 +122,8 @@ export function createApp({ config, db }: { config: ServerConfig; db?: GameStora
           io.close();
           appServer.closeAllConnections();
           await new Promise<void>((resolve) => appServer.close(() => resolve()));
-          if (sql) {
-            await (storage as PostgresStorage).close();
-            await sql.end({ timeout: 5 });
-          }
+          limiter.stop();
+          await close();
         },
       };
     },
@@ -118,5 +162,5 @@ function spaFallback(webDistDir: string): Middleware {
 
 const notFound: Middleware = async (ctx) => {
   ctx.status = 404;
-  ctx.body = { error: 'Not found' };
+  ctx.body = { error: 'not_found' };
 };

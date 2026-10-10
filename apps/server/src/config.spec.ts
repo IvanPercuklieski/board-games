@@ -5,6 +5,7 @@ const validEnv = {
   DATABASE_URL: 'postgresql://postgres.ref:s3cret-pw@aws-0-eu.pooler.supabase.com:5432/postgres',
   PUBLIC_ORIGIN: 'http://localhost:4200',
   SUPABASE_URL: 'https://abc.supabase.co',
+  SUPABASE_ANON_KEY: 'anon-key',
 };
 
 describe('loadConfig', () => {
@@ -14,6 +15,8 @@ describe('loadConfig', () => {
       publicOrigin: 'http://localhost:4200',
       databaseUrl: validEnv.DATABASE_URL,
       supabaseUrl: 'https://abc.supabase.co',
+      supabaseAnonKey: 'anon-key',
+      trustProxy: false,
       webDistDir: undefined,
     });
   });
@@ -44,6 +47,22 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ ...validEnv, SUPABASE_URL: 'http://abc.supabase.co' })).toThrow(
       /SUPABASE_URL/,
     );
+  });
+
+  it('requires SUPABASE_ANON_KEY', () => {
+    const { SUPABASE_ANON_KEY: _omit, ...rest } = validEnv;
+    expect(() => loadConfig(rest)).toThrow(/SUPABASE_ANON_KEY/);
+  });
+
+  it.each([
+    ['true', true],
+    ['false', false],
+  ])('parses TRUST_PROXY=%s', (value, expected) => {
+    expect(loadConfig({ ...validEnv, TRUST_PROXY: value }).trustProxy).toBe(expected);
+  });
+
+  it('rejects other TRUST_PROXY values', () => {
+    expect(() => loadConfig({ ...validEnv, TRUST_PROXY: 'yes' })).toThrow(/TRUST_PROXY/);
   });
 
   it('requires PUBLIC_ORIGIN to be a URL', () => {

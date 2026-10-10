@@ -2,17 +2,12 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { createApp } from './app';
 import { createSql } from './db';
 import { PostgresStorage } from './storage/postgres-storage';
+import { testConfig } from './testing/app';
 import { devDatabaseUrl } from './testing/dev-env';
 import { createSeatedMatch } from './testing/matches';
 import { connectPlayer, eventually, playMove, waitForState } from './testing/players';
 
-const config = {
-  port: 0,
-  publicOrigin: 'http://localhost:4200',
-  databaseUrl: devDatabaseUrl(),
-  supabaseUrl: 'https://abc.supabase.co',
-  webDistDir: undefined,
-};
+const config = testConfig({ databaseUrl: devDatabaseUrl() });
 
 const matchIDs: string[] = [];
 afterAll(async () => {

@@ -10,6 +10,7 @@ import {
   playerNameSchema,
   previewRequestSchema,
   previewResponseSchema,
+  publicConfigSchema,
   roomIdSchema,
   secretSchema,
 } from './api';
@@ -175,6 +176,20 @@ describe('response schemas', () => {
   });
 });
 
+describe('publicConfigSchema', () => {
+  it('parses the public web config', () => {
+    const body = { supabaseUrl: 'https://abc.supabase.co', supabaseAnonKey: 'anon-key' };
+    expect(publicConfigSchema.parse(body)).toEqual(body);
+  });
+
+  it('rejects a non-https Supabase URL', () => {
+    expect(
+      publicConfigSchema.safeParse({ supabaseUrl: 'http://abc.supabase.co', supabaseAnonKey: 'k' })
+        .success,
+    ).toBe(false);
+  });
+});
+
 describe('apiErrorSchema', () => {
   it.each([
     'unauthorized',
@@ -186,6 +201,7 @@ describe('apiErrorSchema', () => {
     'limit_reached',
     'validation_error',
     'rate_limited',
+    'internal_error',
   ])('accepts error code %s', (code) => {
     expect(apiErrorSchema.parse({ error: code })).toEqual({ error: code });
   });

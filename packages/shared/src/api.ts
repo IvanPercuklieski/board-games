@@ -102,6 +102,12 @@ export const lobbyResponseSchema = z.object({
   }),
 });
 
+/** Public values the web app needs to log in (served by GET /api/config). */
+export const publicConfigSchema = z.object({
+  supabaseUrl: z.url({ protocol: /^https$/ }),
+  supabaseAnonKey: z.string().min(1),
+});
+
 export const apiErrorCodeSchema = z.enum([
   'unauthorized',
   'forbidden',
@@ -112,6 +118,7 @@ export const apiErrorCodeSchema = z.enum([
   'limit_reached',
   'validation_error',
   'rate_limited',
+  'internal_error',
 ]);
 
 export const apiErrorSchema = z.object({
@@ -132,5 +139,6 @@ export type PreviewResponse = z.infer<typeof previewResponseSchema>;
 export type JoinRequest = z.infer<typeof joinRequestSchema>;
 export type JoinResponse = z.infer<typeof joinResponseSchema>;
 export type LobbyResponse = z.infer<typeof lobbyResponseSchema>;
+export type PublicConfig = z.infer<typeof publicConfigSchema>;
 export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>;
 export type ApiError = z.infer<typeof apiErrorSchema>;

@@ -2,9 +2,9 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createApp, type RunningApp } from './app';
+import type { RunningApp } from './app';
 import { createSeatedMatch } from './testing/matches';
-import { MemoryStorage } from './testing/memory-storage';
+import { startTestApp } from './testing/app';
 import {
   connectPlayer,
   eventually,
@@ -15,8 +15,6 @@ import {
   waitForState,
 } from './testing/players';
 
-const ORIGIN = 'http://localhost:4200';
-
 let running: RunningApp | undefined;
 afterEach(async () => {
   await running?.stop();
@@ -24,18 +22,9 @@ afterEach(async () => {
 });
 
 async function start(opts: { webDistDir?: string } = {}) {
-  const db = new MemoryStorage();
-  running = await createApp({
-    config: {
-      port: 0,
-      publicOrigin: ORIGIN,
-      databaseUrl: 'unused',
-      supabaseUrl: 'https://abc.supabase.co',
-      webDistDir: opts.webDistDir,
-    },
-    db,
-  }).start();
-  return { db, url: running.url };
+  const t = await startTestApp({ webDistDir: opts.webDistDir });
+  running = t.app;
+  return { db: t.storage, url: t.url };
 }
 
 function makeWebDist() {
