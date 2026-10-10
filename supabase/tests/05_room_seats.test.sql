@@ -2,7 +2,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = extensions, public;
-select plan(12);
+select plan(14);
 
 select has_table('public', 'room_seats', 'public.room_seats exists');
 select col_is_pk('public', 'room_seats', array['room_id', 'seat_index'], 'PK is (room_id, seat_index)');
@@ -56,6 +56,21 @@ select throws_ok(
   '23503',
   null,
   'seats must belong to an existing room'
+);
+
+select throws_ok(
+  $$insert into public.room_seats (room_id, seat_index, name, user_id, credentials_hash)
+    values ('room-a', 3, 'Alice again', '11111111-1111-1111-1111-111111111111', 'x')$$,
+  '23505',
+  null,
+  'an account can hold only one seat per room'
+);
+insert into public.room_seats (room_id, seat_index, name, credentials_hash)
+values ('room-a', 1, 'Guest one', 'g1');
+select lives_ok(
+  $$insert into public.room_seats (room_id, seat_index, name, credentials_hash)
+    values ('room-a', 2, 'Guest two', 'g2')$$,
+  'any number of guests without an account can sit in a room'
 );
 
 -- browser roles get nothing
