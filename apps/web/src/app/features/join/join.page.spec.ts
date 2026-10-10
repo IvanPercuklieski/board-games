@@ -113,6 +113,14 @@ describe('JoinPage', () => {
     expect(navigate).toHaveBeenCalledWith(`/rooms/${roomId}`);
   });
 
+  it('prefers the token from the link and drops an older stashed one', async () => {
+    sessionStorage.setItem(`bt-join-token:${roomId}`, 'O'.repeat(43));
+    const { api } = await setup();
+    await screen.findByRole('button', { name: 'Continue as guest' });
+    expect(api.preview).toHaveBeenCalledWith(roomId, token);
+    expect(sessionStorage.getItem(`bt-join-token:${roomId}`)).toBeNull();
+  });
+
   it('cuts a long display name to the name limit', async () => {
     await setup({ user: { id: 'u1', email: 'b@x.test', displayName: 'B'.repeat(40) } });
     const field = (await screen.findByLabelText('Your name')) as HTMLInputElement;

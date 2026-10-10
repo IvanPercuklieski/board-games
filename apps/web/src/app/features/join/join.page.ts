@@ -222,8 +222,9 @@ export class JoinPage implements OnInit {
       return;
     }
     // From the link, or kept for this tab while the player logged in.
-    this.token =
-      tokenFromFragment(this.fragment()) ?? this.seatStore.takeInviteToken(this.roomId()) ?? null;
+    // (always taken, so a token stashed by an earlier visit doesn't linger in the tab)
+    const stashed = this.seatStore.takeInviteToken(this.roomId());
+    this.token = tokenFromFragment(this.fragment()) ?? stashed ?? null;
     // Keep the secret out of the address bar (screen sharing, screenshots).
     this.location.replaceState(`/join/${this.roomId()}`);
     const displayName = this.auth.user()?.displayName;
