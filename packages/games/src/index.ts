@@ -3,7 +3,7 @@ export { gameRegistry, getGameDefinition, type GameDefinition } from './registry
 export { findWinningLine, TicTacToe, type TicTacToeState } from './tictactoe/tictactoe';
 
 // Catan: the rules plus the helpers the board UI needs to show legal spots and scores.
-export { Catan } from './catan/catan';
+export { Catan, makeCatan, type CatanOptions } from './catan/catan';
 export {
   RESOURCES,
   TERRAIN_RESOURCE,

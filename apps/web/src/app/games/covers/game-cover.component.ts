@@ -1,11 +1,13 @@
 import { NgComponentOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input, type Type } from '@angular/core';
 import { IconComponent } from '../../ui/icon/icon.component';
+import { CatanCoverComponent } from './catan-cover.component';
 import { TicTacToeCoverComponent } from './tictactoe-cover.component';
 
 /** Cover art per game id. Covers are small original SVGs (no third-party art). */
 const COVERS: Record<string, Type<unknown>> = {
   tictactoe: TicTacToeCoverComponent,
+  catan: CatanCoverComponent,
 };
 
 /** The game's cover on a felt-like tile, or a neutral die when a game has none yet. */

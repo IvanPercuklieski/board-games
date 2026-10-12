@@ -39,6 +39,20 @@
   --bt-color-seat-5: #2f6f73;
   --bt-color-seat-6: #9a4f28;
   --bt-color-seat-7: #5c6826;
+  // game pieces: a light halo keeps dark seat colours visible on any terrain
+  --bt-color-piece-outline: #fffdf9;
+  // island board (Catan): terrains, sea, number tokens
+  --bt-color-sea: #a9c9d3;
+  --bt-color-terrain-forest: #4a7550;
+  --bt-color-terrain-pasture: #a5c47a;
+  --bt-color-terrain-fields: #e3bf5c;
+  --bt-color-terrain-hills: #c47a4a;
+  --bt-color-terrain-mountains: #8e939a;
+  --bt-color-terrain-desert: #e6d7ae;
+  --bt-color-terrain-ink: #261f1a;
+  --bt-color-token-bg: #fbf3df;
+  --bt-color-token-text: #261f1a;
+  --bt-color-token-hot: #8c2b2b;
 }
 
 @mixin bt-dark-palette {
@@ -78,6 +92,20 @@
   --bt-color-seat-5: #78c2c6;
   --bt-color-seat-6: #e39a6c;
   --bt-color-seat-7: #b6c47a;
+  // game pieces: a dark outline keeps the lifted seat colours crisp
+  --bt-color-piece-outline: #14100d;
+  // island board (Catan): dimmer terrains so the lifted seat colours stand out
+  --bt-color-sea: #1f3a42;
+  --bt-color-terrain-forest: #2f4f35;
+  --bt-color-terrain-pasture: #5d7a42;
+  --bt-color-terrain-fields: #9c7c2e;
+  --bt-color-terrain-hills: #8a4b2b;
+  --bt-color-terrain-mountains: #5d6168;
+  --bt-color-terrain-desert: #8f7f5a;
+  --bt-color-terrain-ink: #14100d;
+  --bt-color-token-bg: #efe6d8;
+  --bt-color-token-text: #1a1512;
+  --bt-color-token-hot: #8c2b2b;
 }
 
 @mixin bt-static-tokens {

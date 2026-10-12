@@ -25,6 +25,11 @@ const PAIRS = [
   ['border-strong', 'surface', 3],
   // seat colour rings must stand out from the surface (non-text UI: 3:1)
   ...Array.from({ length: 8 }, (_, i) => [`seat-${i}`, 'surface', 3]),
+  // game pieces are drawn in seat colours with an outline (non-text UI: 3:1)
+  ...Array.from({ length: 8 }, (_, i) => [`seat-${i}`, 'piece-outline', 3]),
+  // island board: number tokens are text
+  ['token-text', 'token-bg', 4.5],
+  ['token-hot', 'token-bg', 4.5],
 ];
 
 const css = readFileSync(TOKENS, 'utf8');
