@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/angular-vite';
 import { moduleMetadata } from '@storybook/angular-vite';
 import { settlementSpots } from '@board-table/games';
+import { ZoomPanComponent } from '../../game-kit/zoom-pan.component';
 import { CatanMapComponent } from './catan-map.component';
 import { sampleState as midGame } from './catan-sample';
 
@@ -50,4 +51,17 @@ export const MovingTheBandit: Story = {
       verb: 'Move the Bandit',
     },
   },
+};
+
+export const Zoomable: Story = {
+  name: 'Zoom and pan',
+  decorators: [moduleMetadata({ imports: [CatanMapComponent, ZoomPanComponent] })],
+  render: (args) => ({
+    props: args,
+    template: `
+      <div style="max-width:52rem">
+        <bt-zoom-pan label="Island map"><bt-catan-map [state]="state" [targets]="targets" /></bt-zoom-pan>
+      </div>`,
+  }),
+  args: { state: midGame(4, 'story-4'), targets: null },
 };
