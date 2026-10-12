@@ -1,10 +1,12 @@
 import type { Ctx, Game } from 'boardgame.io';
+import { buildCity, buildRoad, buildSettlement } from './build-moves';
 import { BOARD_CONFIG, boardSizeFor, type DevCard } from './config';
 import { getGeometry } from './geometry';
 import { noResources, total } from './resources';
 import { setupBoard } from './setup-board';
 import { placeRoad, placeSettlement } from './setup-moves';
 import type { CatanState, Hand, PlayerBoard, TurnState } from './state';
+import { bankTrade } from './trade';
 import {
   discard,
   endTurn,
@@ -144,7 +146,9 @@ export function makeCatan({ dice = rollTwoDice }: CatanOptions = {}): Game<Catan
             roll: { moves: { rollDice: makeRollDice(dice) } },
             discard: { moves: { discard } },
             bandit: { moves: { moveBandit } },
-            actions: { moves: { endTurn } },
+            actions: {
+              moves: { buildRoad, buildSettlement, buildCity, bankTrade, endTurn },
+            },
           },
         },
       },
