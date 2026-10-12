@@ -4,6 +4,7 @@ import { getGeometry } from './geometry';
 import { noResources, total } from './resources';
 import type { CatanState } from './state';
 import { openTable, scriptedDice } from './testing';
+import { banditVictims } from './turn-moves';
 
 const geo = getGeometry('standard');
 const MIDDLE = 9; // the middle hex of the standard island
@@ -174,6 +175,20 @@ describe('Catan seven and the bandit', () => {
     t.moves['moveBandit']!(MIDDLE);
     expect(t.G.bandit).toBe(MIDDLE);
     expect(t.stageOf('0')).toBe('actions');
+  });
+
+  it('finds victims from hand sizes, so a player view (hidden hands) can use it too', () => {
+    const t = table([], (G) => {
+      G.buildings[A!] = { owner: '1', kind: 'settlement' };
+      G.buildings[B!] = { owner: '2', kind: 'settlement' };
+      G.hands['1']!.resources.ore = 1;
+    });
+    expect(banditVictims(t.G, MIDDLE, '0')).toEqual(['1']);
+    const view = t.view('0');
+    expect(banditVictims(view, MIDDLE, '0')).toEqual([]); // other hands look empty
+    expect(banditVictims(view, MIDDLE, '0', (id) => view.counts!.handSizes[id]!.resources)).toEqual(
+      ['1'],
+    );
   });
 
   it('must move the bandit to another hex on the board', () => {

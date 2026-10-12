@@ -25,6 +25,11 @@ export interface GameSessionOptions<G> {
   multiplayer: NonNullable<ClientOptions['multiplayer']>;
   /** Seat names by playerID index, used until the server's match data arrives. */
   playerNames?: readonly string[];
+  /**
+   * Seats in the match. Only matters to a transport that creates the match on first sync
+   * (`Local()` in tests); our server has already created it with the seated players.
+   */
+  numPlayers?: number;
 }
 
 /**
@@ -85,6 +90,7 @@ export class GameSession<G> {
       matchID: options.matchID,
       playerID: options.playerID,
       credentials: options.credentials,
+      ...(options.numPlayers !== undefined && { numPlayers: options.numPlayers }),
       debug: false,
     });
   }

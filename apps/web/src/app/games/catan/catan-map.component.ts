@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { getGeometry, type CatanState } from '@board-table/games';
 import { PlacePieceDirective } from '../../game-kit/place-piece.directive';
-import { edgeName, harbourName, hexName, vertexName } from './catan-labels';
+import { edgeName, harbourName, hexName, hexPlace, vertexName } from './catan-labels';
 import { mapLayout, towards, type Point } from './map-layout';
 
 /** Spots the player can pick on the map right now. */
@@ -383,7 +383,7 @@ export class CatanMapComponent {
           ? [vertices[id]!, vertexName(G, id)]
           : t.kind === 'edge'
             ? [edges[id]!.mid, edgeName(G, id)]
-            : [hexes[id]!, hexName(G, id)];
+            : [hexes[id]!, hexPlace(G, id)];
       return {
         id,
         left: (p.x / width) * 100,

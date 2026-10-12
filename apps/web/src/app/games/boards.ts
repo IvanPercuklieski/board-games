@@ -17,6 +17,7 @@ export type BoardLoader = () => Promise<Type<unknown>>;
 const BOARDS: Record<string, BoardLoader> = {
   tictactoe: () =>
     import('./tictactoe/tictactoe-board.component').then((m) => m.TicTacToeBoardComponent),
+  catan: () => import('./catan/catan-board.component').then((m) => m.CatanBoardComponent),
 };
 
 export const GAME_BOARDS = new InjectionToken<Record<string, BoardLoader>>('GAME_BOARDS', {

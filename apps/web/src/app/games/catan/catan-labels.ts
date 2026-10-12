@@ -46,22 +46,47 @@ export function hexName(G: CatanState, hex: number): string {
   return token === null ? TERRAIN_NAME[terrain] : `${TERRAIN_NAME[terrain]} ${token}`;
 }
 
+/** "fields 9, row 2 land 3": names can repeat, the position can't. */
+export function hexPlace(G: CatanState, hex: number): string {
+  const { hexes } = getGeometry(G.board.size);
+  const y = hexes[hex]!.y;
+  const row = [...new Set(hexes.map((h) => h.y))].indexOf(y) + 1;
+  const inRow = hexes.filter((h) => h.y === y).findIndex((h) => h.id === hex) + 1;
+  return `${hexName(G, hex)}, row ${row} land ${inRow}`;
+}
+
 function list(items: string[]): string {
   return items.length <= 1
     ? (items[0] ?? '')
     : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
 }
 
-/** "corner of fields 9, hills 6 and forest 4", "coast corner of fields 9". */
+/** Corner i / side i of a hex in geometry order (clockwise from the top corner). */
+const CORNER = ['top', 'upper right', 'lower right', 'bottom', 'lower left', 'upper left'];
+const SIDE = ['upper right', 'right', 'lower right', 'lower left', 'left', 'upper left'];
+
+/**
+ * "corner of fields 9, hills 6 and forest 4", "coast corner of fields 9 and hills 6",
+ * "top corner of fields 9, row 1 land 2" (a corner on one land only).
+ */
 export function vertexName(G: CatanState, vertex: number): string {
-  const hexes = getGeometry(G.board.size).vertices[vertex]!.hexes.map((h) => hexName(G, h));
-  return hexes.length === 3 ? `corner of ${list(hexes)}` : `coast corner of ${list(hexes)}`;
+  const geo = getGeometry(G.board.size);
+  const hexes = geo.vertices[vertex]!.hexes;
+  if (hexes.length === 1) {
+    const hex = hexes[0]!;
+    return `${CORNER[geo.hexes[hex]!.vertices.indexOf(vertex)]} corner of ${hexPlace(G, hex)}`;
+  }
+  const names = hexes.map((h) => hexName(G, h));
+  return hexes.length === 3 ? `corner of ${list(names)}` : `coast corner of ${list(names)}`;
 }
 
-/** "side between fields 9 and hills 6", "coast side of fields 9". */
+/** "side between fields 9 and hills 6", "upper right side of fields 9, row 1 land 2". */
 export function edgeName(G: CatanState, edge: number): string {
-  const hexes = getGeometry(G.board.size).edges[edge]!.hexes.map((h) => hexName(G, h));
-  return hexes.length === 2 ? `side between ${list(hexes)}` : `coast side of ${hexes[0]}`;
+  const geo = getGeometry(G.board.size);
+  const hexes = geo.edges[edge]!.hexes;
+  if (hexes.length === 2) return `side between ${list(hexes.map((h) => hexName(G, h)))}`;
+  const hex = hexes[0]!;
+  return `${SIDE[geo.hexes[hex]!.edges.indexOf(edge)]} side of ${hexPlace(G, hex)}`;
 }
 
 /** "2 wool and 1 ore", or "nothing". */

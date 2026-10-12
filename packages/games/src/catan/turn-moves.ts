@@ -105,12 +105,20 @@ export const discard: MoveFn<CatanState> = ({ G, ctx, events, playerID }, cards:
   return undefined;
 };
 
-/** Players other than `thief` with a building on `hex` and at least one card. */
-export function banditVictims(G: CatanState, hex: number, thief: string): string[] {
+/**
+ * Players other than `thief` with a building on `hex` and at least one card. `cardsOf` gives a
+ * player's number of resource cards (a player's view only knows the sizes of other hands).
+ */
+export function banditVictims(
+  G: CatanState,
+  hex: number,
+  thief: string,
+  cardsOf: (playerID: string) => number = (id) => total(G.hands[id]!.resources),
+): string[] {
   const owners = getGeometry(G.board.size)
     .hexes[hex]!.vertices.map((v) => G.buildings[v]?.owner)
     .filter((id): id is string => id !== undefined && id !== thief);
-  return [...new Set(owners)].filter((id) => total(G.hands[id]!.resources) > 0).sort();
+  return [...new Set(owners)].filter((id) => cardsOf(id) > 0).sort();
 }
 
 /** Moves the bandit to another hex and steals one random card from a chosen neighbour. */

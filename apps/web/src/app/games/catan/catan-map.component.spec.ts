@@ -69,7 +69,9 @@ describe('CatanMapComponent', () => {
     const group = screen.getByRole('group', { name: 'Build a settlement' });
     const buttons = within(group).getAllByRole('button');
     expect(buttons).toHaveLength(2);
-    expect(buttons[0]!.getAttribute('aria-label')).toMatch(/^Build a settlement: coast corner of /);
+    expect(buttons[0]!.getAttribute('aria-label')).toMatch(
+      /^Build a settlement: top corner of \w+( \d+)?, row 1 land 1$/,
+    );
     await userEvent.click(buttons[1]!);
     expect(picked).toHaveBeenCalledWith(5);
   });

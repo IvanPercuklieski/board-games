@@ -1,28 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/angular-vite';
 import { moduleMetadata } from '@storybook/angular-vite';
-import { Catan, settlementSpots, roadSpots, type CatanState } from '@board-table/games';
-import { Client } from 'boardgame.io/client';
+import { settlementSpots } from '@board-table/games';
 import { CatanMapComponent } from './catan-map.component';
-
-/** A start state from the real rules, with a few pieces placed by each player. */
-function midGame(numPlayers: number, seed: string): CatanState {
-  const client = Client({ game: { ...Catan, seed }, numPlayers, debug: false });
-  client.start();
-  const G = structuredClone(client.getState()!.G) as CatanState;
-  client.stop();
-  for (let round = 0; round < 2; round++) {
-    for (let p = 0; p < numPlayers; p++) {
-      const id = String(p);
-      const spots = settlementSpots(G, id, false);
-      const vertex = spots[(p * 7 + round * 13) % spots.length]!;
-      G.buildings[vertex] = { owner: id, kind: round === 1 && p % 2 === 0 ? 'city' : 'settlement' };
-      const edge = roadSpots(G, id, vertex)[0]!;
-      G.roads[edge] = id;
-      G.roads[roadSpots(G, id)[0]!] = id;
-    }
-  }
-  return G;
-}
+import { sampleState as midGame } from './catan-sample';
 
 const meta: Meta<CatanMapComponent> = {
   title: 'Games/Catan/Map',
