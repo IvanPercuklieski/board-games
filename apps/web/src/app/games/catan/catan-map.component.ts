@@ -3,6 +3,7 @@ import { getGeometry, type CatanState } from '@board-table/games';
 import { PlacePieceDirective } from '../../game-kit/place-piece.directive';
 import { edgeName, harbourName, hexName, hexPlace, vertexName } from './catan-labels';
 import { mapLayout, towards, type Point } from './map-layout';
+import { iconPathFor } from './resource-icon.component';
 
 /** Spots the player can pick on the map right now. */
 export interface MapTargets {
@@ -52,10 +53,11 @@ function pips(token: number): number[] {
             <circle
               [attr.cx]="h.label.x"
               [attr.cy]="h.label.y"
-              r="3.4"
+              r="4.2"
               [class]="'ring ' + h.kind"
             />
-            <text [attr.x]="h.label.x" [attr.y]="h.label.y + 0.7">{{ h.ratio }}</text>
+            <path class="icon" [attr.d]="h.icon" [attr.transform]="h.iconAt" />
+            <text [attr.x]="h.label.x" [attr.y]="h.label.y + 2.85">{{ h.ratio }}</text>
           </g>
         }
 
@@ -230,10 +232,17 @@ function pips(token: number): number[] {
     .harbour .ring.ore {
       stroke: var(--bt-color-terrain-mountains);
     }
+    .harbour .icon {
+      fill: none;
+      stroke: var(--bt-color-token-text);
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
     .harbour text {
       fill: var(--bt-color-token-text);
       font-family: var(--bt-font-sans);
-      font-size: 2.1px;
+      font-size: 1.8px;
       font-weight: 600;
       text-anchor: middle;
     }
@@ -345,6 +354,9 @@ export class CatanMapComponent {
         b: towards(h.label, h.corners[1], 0.8),
         kind,
         ratio: kind === 'any' ? '3:1' : '2:1',
+        // the 24-unit icon scaled into the top half of the ring
+        icon: iconPathFor(kind),
+        iconAt: `translate(${h.label.x - 1.92} ${h.label.y - 3.85}) scale(0.16)`,
       };
     }),
   );

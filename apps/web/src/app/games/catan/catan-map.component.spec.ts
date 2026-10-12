@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { Client } from 'boardgame.io/client';
 import { PIECE_ANIMATOR, PREFERS_REDUCED_MOTION } from '../../game-kit/place-piece.directive';
 import { CatanMapComponent, type MapTargets } from './catan-map.component';
+import { ANY_RESOURCE_PATH, RESOURCE_ICON_PATHS } from './resource-icon.component';
 
 /** A fresh start state from the real rules (random island). */
 function startState(numPlayers = 3): CatanState {
@@ -39,6 +40,19 @@ describe('CatanMapComponent', () => {
       /^Island of 19 lands\. The Bandit is on desert\./,
     );
     expect(img.getAttribute('aria-label')).toMatch(/3:1 harbour by /);
+  });
+
+  it('shows what each harbour trades as an icon, not only a colour', async () => {
+    const G = startState();
+    G.board.harbours = ['wool', 'any', 'ore', 'any', 'any', 'any', 'timber', 'clay', 'grain'];
+    const { container } = await renderMap(G);
+    const harbours = [...container.querySelectorAll('.harbour')];
+    const icon = (i: number) => harbours[i]!.querySelector('.icon')!.getAttribute('d');
+    expect(icon(0)).toBe(RESOURCE_ICON_PATHS.wool);
+    expect(icon(1)).toBe(ANY_RESOURCE_PATH);
+    expect(icon(2)).toBe(RESOURCE_ICON_PATHS.ore);
+    expect(harbours[0]!.textContent).toContain('2:1');
+    expect(harbours[1]!.textContent).toContain('3:1');
   });
 
   it('draws the large island for five or six players', async () => {

@@ -5,8 +5,8 @@ export const HEX_RADIUS = 10;
 const X_UNIT = (HEX_RADIUS * Math.sqrt(3)) / 2; // lattice x = half a hex width
 const Y_UNIT = HEX_RADIUS / 2; // lattice y = a quarter of a hex height
 /** Sea around the island, with room for the harbour labels. */
-const MARGIN = 13;
-const HARBOUR_OFFSET = 7;
+const MARGIN = 14;
+const HARBOUR_OFFSET = 7.8;
 
 export interface Point {
   x: number;
