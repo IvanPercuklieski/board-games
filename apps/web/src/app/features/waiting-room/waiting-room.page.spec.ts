@@ -69,6 +69,7 @@ async function setup({
   reclaimResult = async () => ({ seatIndex: 0, credentials: hostSecret }),
 }: Options = {}) {
   localStorage.clear();
+  sessionStorage.clear(); // seats are kept per window too (SeatStore)
   if (seat) localStorage.setItem(`bt-seat:${roomId}`, JSON.stringify(seat));
   if (invite) localStorage.setItem(`bt-invite:${roomId}`, invite);
 

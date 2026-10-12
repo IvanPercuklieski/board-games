@@ -135,11 +135,46 @@ describe('JoinPage', () => {
     expect(screen.getByText('Enter the name the others will see')).toBeTruthy();
   });
 
-  it('goes straight to the waiting room when this browser already has a seat', async () => {
-    localStorage.setItem(`bt-seat:${roomId}`, JSON.stringify({ seatIndex: 1, credentials }));
+  it('goes straight to the waiting room when this window already has a seat', async () => {
+    sessionStorage.setItem(`bt-seat:${roomId}`, JSON.stringify({ seatIndex: 1, credentials }));
     const { api, navigate } = await setup();
     await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith(`/rooms/${roomId}`));
     expect(api.preview).not.toHaveBeenCalled();
+  });
+
+  describe('when another window of this browser has a seat (e.g. incognito windows)', () => {
+    const other = { seatIndex: 2, credentials: 'B'.repeat(43) };
+    beforeEach(() => localStorage.setItem(`bt-seat:${roomId}`, JSON.stringify(other)));
+
+    it('asks whether to use that seat or take another one', async () => {
+      const { api, navigate } = await setup();
+      expect(
+        await screen.findByRole('heading', { name: 'This browser already has a seat here' }),
+      ).toBeTruthy();
+      expect(navigate).not.toHaveBeenCalled();
+      expect(api.preview).not.toHaveBeenCalled();
+    });
+
+    it('uses that seat in this window', async () => {
+      const { navigate, seats } = await setup();
+      await userEvent.click(await screen.findByRole('button', { name: 'Use that seat here' }));
+      expect(seats.seatInThisWindow(roomId)).toEqual(other);
+      expect(navigate).toHaveBeenCalledWith(`/rooms/${roomId}`);
+    });
+
+    it('takes another seat for this window only', async () => {
+      const { api, navigate, seats } = await setup();
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Take another seat in this window' }),
+      );
+      await userEvent.click(await screen.findByRole('button', { name: 'Continue as guest' }));
+      await userEvent.type(await screen.findByLabelText('Your name'), 'Ben');
+      await userEvent.click(screen.getByRole('button', { name: 'Take a seat' }));
+      expect(api.preview).toHaveBeenCalledWith(roomId, token);
+      expect(seats.seatInThisWindow(roomId)).toEqual({ seatIndex: 1, credentials });
+      expect(JSON.parse(localStorage.getItem(`bt-seat:${roomId}`)!)).toEqual(other);
+      expect(navigate).toHaveBeenCalledWith(`/rooms/${roomId}`);
+    });
   });
 
   it.each([

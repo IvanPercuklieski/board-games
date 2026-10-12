@@ -69,6 +69,7 @@ async function setup({
   signedIn = false,
 } = {}) {
   localStorage.clear();
+  sessionStorage.clear(); // seats are kept per window too (SeatStore)
   if (seat) localStorage.setItem(`bt-seat:${roomId}`, JSON.stringify(seat));
   const sessions: ReturnType<typeof fakeSession>[] = [];
   const factory = vi.fn((options: { playerID: string; playerNames: readonly string[] }) => {

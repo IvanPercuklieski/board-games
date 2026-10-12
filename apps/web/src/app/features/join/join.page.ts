@@ -22,7 +22,7 @@ import { EmptyStateComponent } from '../../ui/empty-state/empty-state.component'
 import { SpinnerComponent } from '../../ui/feedback/spinner.component';
 import { InputDirective, TextFieldComponent } from '../../ui/text-field/text-field.component';
 
-type State = 'loading' | 'ready' | 'invalid' | 'full' | 'started' | 'offline';
+type State = 'loading' | 'has-seat' | 'ready' | 'invalid' | 'full' | 'started' | 'offline';
 
 /** Reads the invite token from a `t=<token>` URL fragment. */
 export function tokenFromFragment(fragment: string | null | undefined): string | null {
@@ -51,6 +51,21 @@ export function tokenFromFragment(fragment: string | null | undefined): string |
       @switch (state()) {
         @case ('loading') {
           <bt-spinner size="lg" label="Checking your invite" />
+        }
+        @case ('has-seat') {
+          <bt-card class="panel">
+            <h1>This browser already has a seat here</h1>
+            <p class="note">
+              Another window of this browser (private windows share one) is seated at this table.
+              Each window plays one seat.
+            </p>
+            <div class="choice">
+              <button bt-button size="lg" (click)="useBrowserSeat()">Use that seat here</button>
+              <button bt-button variant="secondary" size="lg" (click)="load()">
+                Take another seat in this window
+              </button>
+            </div>
+          </bt-card>
         }
         @case ('ready') {
           @if (preview(); as preview) {
@@ -217,7 +232,7 @@ export class JoinPage implements OnInit {
   });
 
   ngOnInit() {
-    if (this.seatStore.seat(this.roomId())) {
+    if (this.seatStore.seatInThisWindow(this.roomId())) {
       void this.router.navigateByUrl(`/rooms/${this.roomId()}`);
       return;
     }
@@ -230,7 +245,15 @@ export class JoinPage implements OnInit {
     const displayName = this.auth.user()?.displayName;
     if (displayName)
       this.name.set([...displayName.trim()].slice(0, LIMITS.playerNameMaxLength).join(''));
-    void this.load();
+    // Another window of this browser is seated here: let the player pick (see SeatStore).
+    if (this.seatStore.seat(this.roomId())) this.state.set('has-seat');
+    else void this.load();
+  }
+
+  protected async useBrowserSeat() {
+    const seat = this.seatStore.seat(this.roomId());
+    if (seat) this.seatStore.saveSeat(this.roomId(), seat);
+    await this.router.navigateByUrl(`/rooms/${this.roomId()}`);
   }
 
   protected async load() {

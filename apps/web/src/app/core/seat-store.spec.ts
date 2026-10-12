@@ -18,6 +18,49 @@ describe('SeatStore', () => {
     expect(store.seat('BbCdEfGhIjKlMnOpQrSt_-')).toBeUndefined();
   });
 
+  describe('one seat per window', () => {
+    const other = 'B'.repeat(43);
+
+    it('prefers this window’s seat, and falls back to the browser’s for new tabs', () => {
+      const store = TestBed.inject(SeatStore);
+      store.saveSeat(roomId, { seatIndex: 1, credentials });
+      expect(store.seatInThisWindow(roomId)).toEqual({ seatIndex: 1, credentials });
+      sessionStorage.clear(); // a new tab of the same browser
+      expect(store.seatInThisWindow(roomId)).toBeUndefined();
+      expect(store.seat(roomId)).toEqual({ seatIndex: 1, credentials });
+    });
+
+    it('never overwrites another window’s seat in the browser', () => {
+      const store = TestBed.inject(SeatStore);
+      store.saveSeat(roomId, { seatIndex: 1, credentials }); // window A
+      sessionStorage.clear(); // window B (e.g. another incognito window)
+      store.saveSeat(roomId, { seatIndex: 2, credentials: other });
+      expect(store.seat(roomId)).toEqual({ seatIndex: 2, credentials: other }); // B plays seat 2
+      sessionStorage.clear(); // window A again after a reload of a third tab
+      expect(store.seat(roomId)).toEqual({ seatIndex: 1, credentials }); // A's seat survived
+    });
+
+    it('replaces the browser’s seat with fresh credentials for the same seat', () => {
+      const store = TestBed.inject(SeatStore);
+      store.saveSeat(roomId, { seatIndex: 0, credentials });
+      store.saveSeat(roomId, { seatIndex: 0, credentials: other });
+      sessionStorage.clear();
+      expect(store.seat(roomId)).toEqual({ seatIndex: 0, credentials: other });
+    });
+
+    it('forgets this window’s seat, and the browser’s only if it is the same one', () => {
+      const store = TestBed.inject(SeatStore);
+      store.saveSeat(roomId, { seatIndex: 1, credentials }); // window A (also the browser's)
+      sessionStorage.clear();
+      store.saveSeat(roomId, { seatIndex: 2, credentials: other }); // window B
+      store.forget(roomId); // B's seat was freed
+      expect(store.seatInThisWindow(roomId)).toBeUndefined();
+      expect(store.seat(roomId)).toEqual({ seatIndex: 1, credentials }); // A keeps playing
+      store.forget(roomId); // now A's (from the browser) goes
+      expect(store.seat(roomId)).toBeUndefined();
+    });
+  });
+
   it('ignores corrupted or tampered entries', () => {
     localStorage.setItem(`bt-seat:${roomId}`, '{"seatIndex":"x"}');
     expect(TestBed.inject(SeatStore).seat(roomId)).toBeUndefined();
