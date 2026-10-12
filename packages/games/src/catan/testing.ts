@@ -75,6 +75,16 @@ export function openTable(options: TableOptions): Table {
   };
 }
 
+/** Dice that return the given rolls in order (then fail loudly). */
+export function scriptedDice(...rolls: [number, number][]): NonNullable<CatanOptions['dice']> {
+  const queue = [...rolls];
+  return () => {
+    const roll = queue.shift();
+    if (!roll) throw new Error('scriptedDice: no rolls left');
+    return roll;
+  };
+}
+
 /** Plays the whole setup phase, each player taking the first legal corner and side. */
 export function playSetup(table: Table) {
   while (table.ctx.phase === 'setup') {

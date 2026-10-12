@@ -5,9 +5,19 @@ import { noResources, total } from './resources';
 import { setupBoard } from './setup-board';
 import { placeRoad, placeSettlement } from './setup-moves';
 import type { CatanState, Hand, PlayerBoard, TurnState } from './state';
+import {
+  discard,
+  endTurn,
+  makeRollDice,
+  moveBandit,
+  rollTwoDice,
+  type DiceRoller,
+} from './turn-moves';
 
 /** Test seams; the real game uses the defaults. */
-export interface CatanOptions {}
+export interface CatanOptions {
+  dice?: DiceRoller;
+}
 
 export function freshTurn(): TurnState {
   return {
@@ -69,7 +79,7 @@ export function catanPlayerView({
   };
 }
 
-export function makeCatan(_options: CatanOptions = {}): Game<CatanState> {
+export function makeCatan({ dice = rollTwoDice }: CatanOptions = {}): Game<CatanState> {
   return {
     name: 'catan',
     minPlayers: 3,
@@ -131,7 +141,10 @@ export function makeCatan(_options: CatanOptions = {}): Game<CatanState> {
             G.turn = freshTurn();
           },
           stages: {
-            roll: { moves: {} },
+            roll: { moves: { rollDice: makeRollDice(dice) } },
+            discard: { moves: { discard } },
+            bandit: { moves: { moveBandit } },
+            actions: { moves: { endTurn } },
           },
         },
       },
