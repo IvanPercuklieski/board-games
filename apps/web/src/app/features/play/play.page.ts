@@ -87,24 +87,32 @@ type Session = GameSession<unknown>;
         }
         @case ('playing') {
           @if (session(); as session) {
-            <header class="top">
-              <h1>{{ gameName() }}</h1>
-              <bt-turn-banner [players]="session.players()" [gameover]="session.gameover()" />
-            </header>
-            <bt-player-strip [players]="session.players()" />
+            @if (layout() === 'page') {
+              <header class="top">
+                <h1>{{ gameName() }}</h1>
+                <bt-turn-banner [players]="session.players()" [gameover]="session.gameover()" />
+              </header>
+              <bt-player-strip [players]="session.players()" />
+            }
             @if (!session.isConnected() && session.gameover() === undefined) {
               <p class="reconnecting"><bt-spinner size="sm" /> Reconnecting…</p>
             }
 
-            <section class="board" aria-label="Game board">
+            <section class="board" [class.table]="layout() === 'table'" aria-label="Game board">
               @if (board(); as board) {
                 <ng-container *ngComponentOutlet="board; inputs: { session }" />
               }
             </section>
 
             @if (session.gameover() !== undefined) {
-              <bt-card class="result">
-                <h2>{{ result() }}</h2>
+              <bt-card
+                class="result"
+                [class.overlay]="layout() === 'table'"
+                [attr.role]="layout() === 'table' ? 'dialog' : null"
+                [attr.aria-modal]="layout() === 'table' ? 'false' : null"
+                [attr.aria-labelledby]="layout() === 'table' ? 'bt-result-title' : null"
+              >
+                <h2 id="bt-result-title">{{ result() }}</h2>
                 <p class="muted">
                   @if (isHost()) {
                     Everyone keeps their seat. Play again or pick another game at the table.
@@ -162,6 +170,18 @@ type Session = GameSession<unknown>;
       place-items: center;
       padding: var(--bt-space-6) 0;
     }
+    .board.table {
+      padding: 0;
+      place-items: stretch;
+    }
+    .result.overlay {
+      position: fixed;
+      top: 20%;
+      left: 50%;
+      z-index: 20;
+      translate: -50% 0;
+      box-shadow: var(--bt-shadow-lg);
+    }
     .result {
       display: grid;
       gap: var(--bt-space-3);
@@ -201,6 +221,7 @@ export class PlayPage implements OnInit {
   protected readonly session = signal<Session | null>(null);
   protected readonly board = signal<Type<unknown> | null>(null);
   protected readonly gameId = signal('');
+  protected readonly layout = signal<'page' | 'table'>('page');
   /** The room as loaded, then as pushed by the live room connection. */
   private readonly loadedLobby = signal<LobbyResponse | undefined>(undefined);
   private readonly connection = signal<RoomConnection | undefined>(undefined);
@@ -272,15 +293,15 @@ export class PlayPage implements OnInit {
     }
 
     const definition = getGameDefinition(lobby.gameId);
-    const loadBoard = this.boards[lobby.gameId];
-    if (!definition || !loadBoard) {
+    const entry = this.boards[lobby.gameId];
+    if (!definition || !entry) {
       this.state.set('unsupported');
       return;
     }
     // The board's code first (lazy chunk), so a failed load leaves no half-started session.
     let board;
     try {
-      board = await loadBoard();
+      board = await entry.load();
     } catch (e) {
       this.state.set('offline');
       this.errors.report(e, { context: 'The game board couldn’t be loaded.' });
@@ -288,6 +309,7 @@ export class PlayPage implements OnInit {
     }
 
     this.gameId.set(lobby.gameId);
+    this.layout.set(entry.layout);
     this.loadedLobby.set(lobby);
 
     const names: string[] = [];

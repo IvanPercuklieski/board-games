@@ -13,14 +13,29 @@ export interface GameBoard<G = unknown> {
 
 export type BoardLoader = () => Promise<Type<unknown>>;
 
+export interface BoardEntry {
+  load: BoardLoader;
+  /**
+   * `page`: the play page shows the title, turn banner and players above the board.
+   * `table`: the board takes the whole page and shows players and turns itself.
+   */
+  layout: 'page' | 'table';
+}
+
 /** Board components by game id, loaded only when that game is played. */
-const BOARDS: Record<string, BoardLoader> = {
-  tictactoe: () =>
-    import('./tictactoe/tictactoe-board.component').then((m) => m.TicTacToeBoardComponent),
-  catan: () => import('./catan/catan-board.component').then((m) => m.CatanBoardComponent),
+const BOARDS: Record<string, BoardEntry> = {
+  tictactoe: {
+    load: () =>
+      import('./tictactoe/tictactoe-board.component').then((m) => m.TicTacToeBoardComponent),
+    layout: 'page',
+  },
+  catan: {
+    load: () => import('./catan/catan-board.component').then((m) => m.CatanBoardComponent),
+    layout: 'table',
+  },
 };
 
-export const GAME_BOARDS = new InjectionToken<Record<string, BoardLoader>>('GAME_BOARDS', {
+export const GAME_BOARDS = new InjectionToken<Record<string, BoardEntry>>('GAME_BOARDS', {
   providedIn: 'root',
   factory: () => BOARDS,
 });

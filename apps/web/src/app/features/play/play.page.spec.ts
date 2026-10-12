@@ -67,6 +67,7 @@ async function setup({
   seat = { seatIndex: 1, credentials: secret } as { seatIndex: number; credentials: string } | null,
   lobbyResult = async () => lobby(),
   signedIn = false,
+  layout = 'page' as 'page' | 'table',
 } = {}) {
   localStorage.clear();
   sessionStorage.clear(); // seats are kept per window too (SeatStore)
@@ -92,7 +93,10 @@ async function setup({
       provideRouter([]),
       { provide: ApiClient, useValue: { lobby: vi.fn(lobbyResult) } },
       { provide: AuthService, useValue: { isSignedIn: signal(signedIn) } },
-      { provide: GAME_BOARDS, useValue: { tictactoe: async () => StubBoardComponent } },
+      {
+        provide: GAME_BOARDS,
+        useValue: { tictactoe: { load: async () => StubBoardComponent, layout } },
+      },
       { provide: GAME_SESSION_FACTORY, useValue: factory },
       { provide: ROOM_CONNECTION_FACTORY, useValue: connect },
     ],
@@ -118,6 +122,17 @@ describe('PlayPage', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Tic-tac-toe' })).toBeTruthy();
     expect(screen.getByRole('list', { name: 'Players' })).toBeTruthy();
     expect(screen.getByRole('status').textContent).toContain('Ivan’s turn');
+  });
+
+  it('gives a table-layout game the whole page: no title, banner or player strip', async () => {
+    const { sessions } = await setup({ layout: 'table' });
+    expect(await screen.findByText('Stub board for player 1')).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+    expect(screen.queryByRole('list', { name: 'Players' })).toBeNull();
+    sessions[0]!.gameover.set({ winner: '1' });
+    const result = await screen.findByRole('dialog', { name: 'You won!' });
+    expect(result.getAttribute('aria-modal')).toBe('false'); // the board stays usable behind it
+    expect(screen.getByRole('button', { name: 'Back to the table' })).toBeTruthy();
   });
 
   it('shows the result and leads back to the same table, keeping the seat', async () => {
@@ -218,8 +233,11 @@ describe('PlayPage', () => {
         {
           provide: GAME_BOARDS,
           useValue: {
-            tictactoe: () =>
-              Promise.reject(new TypeError('Failed to fetch dynamically imported module: /b.js')),
+            tictactoe: {
+              load: () =>
+                Promise.reject(new TypeError('Failed to fetch dynamically imported module: /b.js')),
+              layout: 'page',
+            },
           },
         },
         { provide: GAME_SESSION_FACTORY, useValue: factory },
