@@ -142,8 +142,28 @@ describe('CatanPlayersComponent', () => {
     const items = screen.getAllByRole('listitem');
     expect(within(items[0]!).getByLabelText('2 points, plus 1 hidden from Landmarks')).toBeTruthy();
     expect(within(items[1]!).getByLabelText('3 points')).toBeTruthy();
-    expect(within(items[1]!).getByText('Strongest Guard')).toBeTruthy();
-    expect(items[1]!.getAttribute('aria-current')).toBe('true');
+    expect(within(items[1]!).getByRole('img', { name: 'Holds Strongest Guard' })).toBeTruthy();
+    expect(within(items[0]!).getByRole('img', { name: 'Strongest Guard: not held' })).toBeTruthy();
+    expect(
+      within(items[1]!).getByRole('img', { name: 'Holds Strongest Guard' }).classList,
+    ).toContain('lit');
+  });
+
+  it('shows cards in hand, development cards, roads built and Guards played', async () => {
+    const { G } = start();
+    G.hands['1']!.resources = { timber: 2, clay: 0, wool: 1, grain: 0, ore: 0 };
+    G.hands['1']!.cards = ['guard'];
+    G.players['1']!.roads = 11;
+    G.players['1']!.guards = 2;
+    delete G.counts; // a full state (not a player's view): hands are known
+    await render(CatanPlayersComponent, { inputs: { state: G, players } });
+    const mara = screen.getAllByRole('listitem')[1]!;
+    const stats = [...mara.querySelectorAll('dl div')].map(
+      (d) => `${d.querySelector('dt')!.textContent} ${d.querySelector('dd')!.textContent}`,
+    );
+    expect(stats).toEqual(['Cards 3', 'Dev 1', 'Roads 4', 'Guards 2']);
+    expect(within(mara).getByText('Turn')).toBeTruthy();
+    expect(mara.getAttribute('aria-current')).toBe('true');
   });
 
   it('shows who is giving back cards and how many', async () => {

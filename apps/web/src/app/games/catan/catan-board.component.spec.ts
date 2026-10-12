@@ -249,7 +249,11 @@ describe('CatanBoardComponent: cards and hidden hands', () => {
     });
     const { container } = await renderBoard(mara!);
     const players = screen.getByRole('complementary', { name: 'Table' });
-    expect(within(players).getByText(/3 cards · 1 development/)).toBeTruthy();
+    const ivanRow = within(players).getAllByRole('listitem')[0]!;
+    const stats = [...ivanRow.querySelectorAll('dl div')].map(
+      (d) => `${d.querySelector('dt')!.textContent} ${d.querySelector('dd')!.textContent}`,
+    );
+    expect(stats.slice(0, 2)).toEqual(['Cards 3', 'Dev 1']);
     expect(container.textContent).not.toContain('Landmark');
     expect(mara!.G()!.hands['0']!.resources.timber).toBe(0); // hidden in Mara's view
   });
