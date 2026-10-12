@@ -1,9 +1,18 @@
 import type { Ctx, Game } from 'boardgame.io';
 import { buildCity, buildRoad, buildSettlement } from './build-moves';
+import {
+  buyCard,
+  placeFreeRoad,
+  playGuard,
+  playMarket,
+  playRoadCrew,
+  playWindfall,
+} from './card-moves';
 import { BOARD_CONFIG, boardSizeFor, type DevCard } from './config';
 import { getGeometry } from './geometry';
 import { noResources, total } from './resources';
 import { setupBoard } from './setup-board';
+import { POINTS_TO_WIN, victoryPoints } from './scoring';
 import { placeRoad, placeSettlement } from './setup-moves';
 import type { CatanState, Hand, PlayerBoard, TurnState } from './state';
 import { bankTrade } from './trade';
@@ -139,21 +148,42 @@ export function makeCatan({ dice = rollTwoDice }: CatanOptions = {}): Game<Catan
             next: ({ ctx }) => (ctx.playOrderPos + 1) % ctx.numPlayers,
           },
           activePlayers: { currentPlayer: 'roll' },
-          onBegin: ({ G }) => {
+          onBegin: ({ G, ctx }) => {
             G.turn = freshTurn();
+            const hand = G.hands[ctx.currentPlayer]!;
+            hand.cards.push(...hand.newCards);
+            hand.newCards = [];
           },
           stages: {
-            roll: { moves: { rollDice: makeRollDice(dice) } },
+            roll: { moves: { rollDice: makeRollDice(dice), ...cardPlays } },
             discard: { moves: { discard } },
             bandit: { moves: { moveBandit } },
+            roadCrew: { moves: { placeFreeRoad } },
             actions: {
-              moves: { buildRoad, buildSettlement, buildCity, bankTrade, endTurn },
+              moves: {
+                buildRoad,
+                buildSettlement,
+                buildCity,
+                buyCard,
+                bankTrade,
+                ...cardPlays,
+                endTurn,
+              },
             },
           },
         },
       },
     },
+
+    // Points are only checked for the player whose turn it is.
+    endIf: ({ G, ctx }) => {
+      if (ctx.phase !== 'main') return undefined;
+      const player = ctx.currentPlayer;
+      return victoryPoints(G, player) >= POINTS_TO_WIN ? { winner: player } : undefined;
+    },
   };
 }
+
+const cardPlays = { playGuard, playRoadCrew, playWindfall, playMarket };
 
 export const Catan = makeCatan();
