@@ -271,3 +271,57 @@ describe('CatanBoardComponent: five or six players', () => {
     await vi.waitFor(() => expect(prompt().textContent).toBe('Ben is building between turns…'));
   });
 });
+
+describe('CatanBoardComponent: counter-offers', () => {
+  const tradeTable = () =>
+    table({
+      skipSetup: true,
+      dice: dice([2, 3]),
+      prepare: (G) => {
+        quiet(G);
+        G.hands['0']!.resources = { timber: 0, clay: 0, wool: 3, grain: 0, ore: 0 };
+        G.hands['1']!.resources = { timber: 0, clay: 0, wool: 0, grain: 0, ore: 2 };
+      },
+    });
+
+  it('lets a player suggest other terms, starting from the offer seen from their side', async () => {
+    const [ivan, mara] = tradeTable();
+    await vi.waitFor(() => expect(ivan!.isMyTurn()).toBe(true));
+    ivan!.move('rollDice');
+    await vi.waitFor(() => expect(ivan!.G()!.turn.rolled).toBe(true));
+    ivan!.move('offerTrade', { wool: 2 }, { ore: 1 });
+
+    await renderBoard(mara!);
+    await userEvent.click(await screen.findByRole('button', { name: 'Suggest other terms' }));
+    const terms = screen.getByRole('group', { name: 'Your terms' });
+    expect(within(terms).getByRole('button', { name: 'Suggest 1 ore for 2 wool' })).toBeTruthy();
+    await userEvent.click(within(terms).getAllByRole('button', { name: 'One more wool' })[1]!);
+    await userEvent.click(within(terms).getByRole('button', { name: 'Suggest 1 ore for 3 wool' }));
+
+    await vi.waitFor(() =>
+      expect(ivan!.G()!.turn.trade?.counters['1']).toMatchObject({
+        give: { ore: 1 },
+        want: { wool: 3 },
+      }),
+    );
+    expect(screen.getByText(/You suggested 1 ore for 3 wool\. Waiting for Ivan\./)).toBeTruthy();
+  });
+
+  it('lets the player who offered accept suggested terms', async () => {
+    const [ivan, mara] = tradeTable();
+    await vi.waitFor(() => expect(ivan!.isMyTurn()).toBe(true));
+    ivan!.move('rollDice');
+    await vi.waitFor(() => expect(ivan!.G()!.turn.rolled).toBe(true));
+    ivan!.move('offerTrade', { wool: 2 }, { ore: 1 });
+    await vi.waitFor(() => expect(mara!.isMyTurn()).toBe(true));
+    mara!.move('counterTrade', { ore: 2 }, { wool: 3 });
+
+    await renderBoard(ivan!);
+    expect(await screen.findByText(/Mara suggests 2 ore for 3 wool/)).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Accept Mara’s terms' }));
+    await vi.waitFor(() =>
+      expect(ivan!.G()!.hands['0']!.resources).toMatchObject({ wool: 0, ore: 2 }),
+    );
+    await vi.waitFor(() => expect(prompt().textContent).toContain('Build, trade or play a card'));
+  });
+});

@@ -1,9 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 import {
   bankRatios,
-  hasAll,
   RESOURCES,
-  totalResources,
   type CatanState,
   type Resource,
   type ResourceCounts,
@@ -12,6 +10,7 @@ import { ButtonComponent } from '../../ui/button/button.component';
 import { SegmentedComponent } from '../../ui/segmented/segmented.component';
 import { describeCounts, RESOURCE_NAME } from './catan-labels';
 import { noCounts, ResourceCounterComponent } from './resource-counter.component';
+import { termsOk } from './trade-terms';
 
 export interface BankTrade {
   give: Resource;
@@ -101,16 +100,9 @@ export class CatanTradeComponent {
       `for 1 ${RESOURCE_NAME[this.get()].toLowerCase()}`,
   );
 
-  protected readonly offerOk = computed(() => {
-    const give = this.offerGive();
-    const want = this.offerWant();
-    return (
-      totalResources(give) > 0 &&
-      totalResources(want) > 0 &&
-      !RESOURCES.some((r) => give[r] > 0 && want[r] > 0) &&
-      hasAll(this.hand(), give)
-    );
-  });
+  protected readonly offerOk = computed(() =>
+    termsOk(this.offerGive(), this.offerWant(), this.hand()),
+  );
   protected readonly offerLabel = computed(() =>
     this.offerOk()
       ? `Offer ${describeCounts(this.offerGive())} for ${describeCounts(this.offerWant())}`

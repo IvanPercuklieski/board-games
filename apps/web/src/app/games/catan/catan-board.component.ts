@@ -180,6 +180,7 @@ const BUILD: Record<BuildMode, { label: string; verb: string; cost: keyof typeof
                 [owner]="currentPlayer()"
                 [players]="players()"
                 (confirm)="move('confirmTrade', $event)"
+                (acceptCounter)="move('acceptCounter', $event)"
                 (cancel)="move('cancelTrade')"
               />
             }
@@ -191,6 +192,7 @@ const BUILD: Record<BuildMode, { label: string; verb: string; cost: keyof typeof
                 [owner]="currentPlayer()"
                 [players]="players()"
                 (respond)="move('respondTrade', $event)"
+                (counter)="move('counterTrade', $event.give, $event.want)"
               />
             }
           }

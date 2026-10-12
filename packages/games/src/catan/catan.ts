@@ -16,7 +16,15 @@ import { setupBoard } from './setup-board';
 import { POINTS_TO_WIN, victoryPoints } from './scoring';
 import { placeRoad, placeSettlement } from './setup-moves';
 import type { CatanState, Hand, PlayerBoard, TurnState } from './state';
-import { bankTrade, cancelTrade, confirmTrade, offerTrade, respondTrade } from './trade';
+import {
+  acceptCounter,
+  bankTrade,
+  cancelTrade,
+  confirmTrade,
+  counterTrade,
+  offerTrade,
+  respondTrade,
+} from './trade';
 import {
   discard,
   endTurn,
@@ -178,8 +186,8 @@ export function makeCatan({ dice = rollTwoDice }: CatanOptions = {}): Game<Catan
             specialBuild: {
               moves: { buildRoad, buildSettlement, buildCity, buyCard, finishSpecialBuild },
             },
-            trading: { moves: { confirmTrade, cancelTrade } },
-            tradeResponse: { moves: { respondTrade } },
+            trading: { moves: { confirmTrade, acceptCounter, cancelTrade } },
+            tradeResponse: { moves: { respondTrade, counterTrade } },
           },
         },
       },

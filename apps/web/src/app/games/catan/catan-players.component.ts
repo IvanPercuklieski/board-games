@@ -158,6 +158,7 @@ function statusOf(G: CatanState, playerID: string, stage: string | undefined): s
   if (stage === 'discard') return `Giving back ${G.turn.discards[playerID] ?? 0}`;
   if (stage === 'specialBuild') return 'Building';
   if (stage === 'tradeResponse' && G.turn.trade) {
+    if (G.turn.trade.counters[playerID]) return 'Suggests other terms';
     const answer = G.turn.trade.responses[playerID];
     return answer === undefined ? 'Thinking' : answer ? 'Accepts' : 'Declines';
   }

@@ -93,6 +93,15 @@ export const TradeOffer = {
   }),
 };
 
+export const CounterOffer = {
+  name: 'Your offer, with suggested terms',
+  ...boardStory({ skipSetup: true, dice: dice([3, 3]), prepare: midGame(3) }, 0, ([ivan, mara]) => {
+    ivan!.move('rollDice');
+    setTimeout(() => ivan!.move('offerTrade', { wool: 2 }, { ore: 1 }), 50);
+    setTimeout(() => mara!.move('counterTrade', { ore: 1 }, { wool: 3 }), 100);
+  }),
+};
+
 export const SixPlayers = {
   name: '5-6 players: building between turns',
   ...boardStory(

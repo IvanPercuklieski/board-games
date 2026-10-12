@@ -51,6 +51,11 @@ export interface TradeOffer {
   want: ResourceCounts;
   /** Answers by playerID: true = accepts, false = declines. */
   responses: Record<string, boolean>;
+  /**
+   * Other terms suggested by playerID, from that player's side: what they would give the
+   * current player and what they want in return. A player has an answer or a counter, not both.
+   */
+  counters: Record<string, { give: ResourceCounts; want: ResourceCounts }>;
 }
 
 export interface TurnState {
