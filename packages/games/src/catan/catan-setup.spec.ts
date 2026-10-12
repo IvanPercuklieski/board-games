@@ -180,3 +180,20 @@ describe('Catan player view', () => {
     expect(JSON.stringify(view)).not.toContain('guard"');
   });
 });
+
+describe('Catan moves run on the server only', () => {
+  // boardgame.io 0.50 silently drops a move the server rejects, so a browser that applied it
+  // optimistically would show a different game from then on. Browsers only show server state.
+  it('marks every move in every phase and stage client: false', async () => {
+    const { Catan } = await import('./catan');
+    const moveMaps = [
+      Catan.phases!['setup']!.moves!,
+      ...Object.values(Catan.phases!['main']!.turn!.stages!).map((stage) => stage.moves!),
+    ];
+    const moves = moveMaps.flatMap((map) => Object.entries(map));
+    expect(moves.length).toBeGreaterThan(20);
+    for (const [name, move] of moves) {
+      expect(typeof move === 'object' && move.client === false, name).toBe(true);
+    }
+  });
+});

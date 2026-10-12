@@ -1,4 +1,4 @@
-import type { Ctx, Game } from 'boardgame.io';
+import type { Ctx, Game, MoveMap } from 'boardgame.io';
 import { buildCity, buildRoad, buildSettlement } from './build-moves';
 import {
   buyCard,
@@ -151,7 +151,7 @@ export function makeCatan({ dice = rollTwoDice }: CatanOptions = {}): Game<Catan
             next: snakeNext,
           },
         },
-        moves: { placeSettlement, placeRoad },
+        moves: serverOnly({ placeSettlement, placeRoad }),
       },
       main: {
         turn: {
@@ -167,12 +167,12 @@ export function makeCatan({ dice = rollTwoDice }: CatanOptions = {}): Game<Catan
             hand.newCards = [];
           },
           stages: {
-            roll: { moves: { rollDice: makeRollDice(dice), ...cardPlays } },
-            discard: { moves: { discard } },
-            bandit: { moves: { moveBandit } },
-            roadCrew: { moves: { placeFreeRoad } },
+            roll: { moves: serverOnly({ rollDice: makeRollDice(dice), ...cardPlays }) },
+            discard: { moves: serverOnly({ discard }) },
+            bandit: { moves: serverOnly({ moveBandit }) },
+            roadCrew: { moves: serverOnly({ placeFreeRoad }) },
             actions: {
-              moves: {
+              moves: serverOnly({
                 buildRoad,
                 buildSettlement,
                 buildCity,
@@ -181,13 +181,19 @@ export function makeCatan({ dice = rollTwoDice }: CatanOptions = {}): Game<Catan
                 offerTrade,
                 ...cardPlays,
                 endTurn,
-              },
+              }),
             },
             specialBuild: {
-              moves: { buildRoad, buildSettlement, buildCity, buyCard, finishSpecialBuild },
+              moves: serverOnly({
+                buildRoad,
+                buildSettlement,
+                buildCity,
+                buyCard,
+                finishSpecialBuild,
+              }),
             },
-            trading: { moves: { confirmTrade, acceptCounter, cancelTrade } },
-            tradeResponse: { moves: { respondTrade, counterTrade } },
+            trading: { moves: serverOnly({ confirmTrade, acceptCounter, cancelTrade }) },
+            tradeResponse: { moves: serverOnly({ respondTrade, counterTrade }) },
           },
         },
       },
@@ -203,5 +209,20 @@ export function makeCatan({ dice = rollTwoDice }: CatanOptions = {}): Game<Catan
 }
 
 const cardPlays = { playGuard, playRoadCrew, playWindfall, playMarket };
+
+/**
+ * Every Catan move runs on the server only (`client: false`). boardgame.io 0.50 applies moves
+ * in the browser first, and when the server then rejects one (stale state, not the player's
+ * turn) it drops it without telling that browser, which from then on shows a different game.
+ * Browsers here only ever show state the server confirmed. Covered by catan-setup.spec.ts.
+ */
+function serverOnly(moves: MoveMap<CatanState>): MoveMap<CatanState> {
+  return Object.fromEntries(
+    Object.entries(moves).map(([name, move]) => [
+      name,
+      typeof move === 'function' ? { move, client: false } : { ...move, client: false },
+    ]),
+  );
+}
 
 export const Catan = makeCatan();
