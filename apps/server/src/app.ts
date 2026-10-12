@@ -22,6 +22,7 @@ import { RoomsService } from './rooms/rooms-service';
 import { guardSockets, isSeatOwner } from './socket-security';
 import type { GameStorage } from './storage/game-storage';
 import { PostgresStorage } from './storage/postgres-storage';
+import { WithoutInitialState } from './storage/without-initial-state';
 
 /** Max size of a single websocket message from a client. */
 const MAX_SOCKET_MESSAGE_BYTES = 64 * 1024;
@@ -95,7 +96,8 @@ export function createApp({
       // game deletes its match and reopens the room; idle rooms are swept periodically.
       const seatEvents = new SeatEvents();
       const lifecycle = new RoomLifecycle({ repo, seatEvents });
-      const gameStorage = lifecycle.wrap(storage);
+      // ...and never sees initial states, which it would send to players unfiltered.
+      const gameStorage = lifecycle.wrap(new WithoutInitialState(storage));
 
       const server = Server({
         games: gameRegistry.map((def) => def.game),
