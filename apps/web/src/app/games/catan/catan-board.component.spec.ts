@@ -248,7 +248,7 @@ describe('CatanBoardComponent: cards and hidden hands', () => {
       },
     });
     const { container } = await renderBoard(mara!);
-    const players = screen.getByRole('complementary', { name: 'Hand and players' });
+    const players = screen.getByRole('complementary', { name: 'Table' });
     expect(within(players).getByText(/3 cards · 1 development/)).toBeTruthy();
     expect(container.textContent).not.toContain('Landmark');
     expect(mara!.G()!.hands['0']!.resources.timber).toBe(0); // hidden in Mara's view
@@ -323,5 +323,49 @@ describe('CatanBoardComponent: counter-offers', () => {
       expect(ivan!.G()!.hands['0']!.resources).toMatchObject({ wool: 0, ore: 2 }),
     );
     await vi.waitFor(() => expect(prompt().textContent).toContain('Build, trade or play a card'));
+  });
+});
+
+describe('CatanBoardComponent: table layout', () => {
+  it('shows players, log and chat in tabs on narrow screens', async () => {
+    const [ivan] = table({ skipSetup: true, prepare: quiet });
+    await renderBoard(ivan!);
+    const tablist = screen.getByRole('tablist', { name: 'Table' });
+    const tabs = within(tablist).getAllByRole('tab');
+    expect(tabs.map((t) => t.textContent!.trim())).toEqual(['Players', 'Log', 'Chat']);
+    expect(tabs[0]!.getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tabpanel').textContent).toContain('first to 10 points');
+
+    tabs[0]!.focus();
+    await userEvent.keyboard('{ArrowRight}');
+    expect(screen.getByRole('tab', { name: 'Log' }).getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Log' }));
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Chat' }));
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'Message to the table' }),
+      'hi all{Enter}',
+    );
+    await vi.waitFor(() => expect(ivan!.chatMessages().map((m) => m.payload)).toEqual(['hi all']));
+  });
+
+  it('opens trading as a pop-out that takes the focus and closes with Escape', async () => {
+    const [ivan] = table({
+      skipSetup: true,
+      dice: dice([2, 3]),
+      prepare: (G) => {
+        quiet(G);
+        G.hands['0']!.resources = { timber: 0, clay: 0, wool: 4, grain: 0, ore: 0 };
+      },
+    });
+    await renderBoard(ivan!);
+    await userEvent.click(screen.getByRole('button', { name: 'Roll the dice' }));
+    const trade = await screen.findByRole('button', { name: 'Trade' });
+    await userEvent.click(trade);
+    const popout = await screen.findByRole('region', { name: 'Trade' });
+    await vi.waitFor(() => expect(document.activeElement).toBe(popout));
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('region', { name: 'Trade' })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Trade' }));
   });
 });

@@ -90,6 +90,10 @@ const DRAG_THRESHOLD = 5;
       display: block;
     }
     .viewport {
+      /* hugs the content, so zoom limits match what is drawn */
+      width: fit-content;
+      max-width: 100%;
+      margin: 0 auto;
       overflow: hidden;
       border-radius: var(--bt-radius-lg);
       cursor: grab;

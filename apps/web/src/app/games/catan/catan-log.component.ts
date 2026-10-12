@@ -23,7 +23,9 @@ import { describeEvent } from './catan-log';
   styles: `
     :host {
       display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
       gap: var(--bt-space-2);
+      min-height: 0;
     }
     .title {
       font-size: var(--bt-text-lg);
@@ -34,8 +36,9 @@ import { describeEvent } from './catan-log';
     }
     .lines {
       display: grid;
+      align-content: start;
       gap: var(--bt-space-1);
-      max-height: 14rem;
+      max-height: var(--bt-pane-max-height, 14rem);
       overflow-y: auto;
       margin: 0;
       padding: var(--bt-space-2) var(--bt-space-3);

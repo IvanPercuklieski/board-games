@@ -19,7 +19,7 @@ import { ButtonComponent } from '../../ui/button/button.component';
 import { SegmentedComponent } from '../../ui/segmented/segmented.component';
 import { CARD, RESOURCE_NAME } from './catan-labels';
 import { noCounts, ResourceCounterComponent } from './resource-counter.component';
-import { ResourceSwatchComponent } from './resource-swatch.component';
+import { ResourceIconComponent } from './resource-icon.component';
 
 export type CardPlay =
   | { card: 'guard' | 'roadCrew' }
@@ -29,38 +29,40 @@ export type CardPlay =
 const PLAYABLE: readonly DevCard[] = ['guard', 'roadCrew', 'windfall', 'market'];
 const ORDER: readonly DevCard[] = [...PLAYABLE, 'landmark'];
 
-/** The player's own cards: resources, and development cards with Play buttons. */
+/**
+ * The player's own cards, face up: one card per resource held (with how many), and the
+ * development cards with Play buttons. Windfall and Corner the Market ask for their choice in a
+ * small panel above the cards.
+ */
 @Component({
   selector: 'bt-catan-hand',
-  imports: [ButtonComponent, ResourceCounterComponent, ResourceSwatchComponent, SegmentedComponent],
+  imports: [ButtonComponent, ResourceCounterComponent, ResourceIconComponent, SegmentedComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <h2 class="title">Your hand</h2>
-    <ul class="resources" aria-label="Resources">
-      @for (r of resources(); track r.resource) {
-        <li [class.none]="r.count === 0">
-          <bt-resource-swatch [resource]="r.resource" />
-          <span
-            ><span class="count">{{ r.count }}</span> {{ r.name }}</span
-          >
-        </li>
-      }
-    </ul>
-
-    @if (cards().length > 0) {
-      <ul class="cards" aria-label="Development cards">
+    <h2 class="bt-visually-hidden">Your cards</h2>
+    @if (resources().length === 0 && cards().length === 0) {
+      <p class="empty">No cards yet.</p>
+    } @else {
+      <ul class="cards" aria-label="Your cards">
+        @for (r of resources(); track r.resource) {
+          <li [class]="'card resource ' + r.resource">
+            <bt-resource-icon class="icon" [resource]="r.resource" />
+            <span class="name">{{ r.name }}</span>
+            @if (r.count > 1) {
+              <span class="count"> ×{{ r.count }}</span>
+            }
+          </li>
+        }
         @for (c of cards(); track c.card) {
-          <li>
-            <div class="card-text">
-              <strong>{{ c.name }}</strong>
-              @if (c.count > 1) {
-                <span class="times">×{{ c.count }}</span>
-              }
-              @if (c.waiting > 0) {
-                <span class="new">{{ c.waiting }} new, playable next turn</span>
-              }
-              <p>{{ c.text }}</p>
-            </div>
+          <li class="card dev" [class.waiting]="c.count === 0">
+            <span class="name">{{ c.name }}</span>
+            @if (c.count + c.waiting > 1) {
+              <span class="count"> ×{{ c.count + c.waiting }}</span>
+            }
+            <span class="text">{{ c.text }}</span>
+            @if (c.waiting > 0) {
+              <span class="new">{{ c.waiting }} new, playable next turn</span>
+            }
             @if (c.playable) {
               <button
                 bt-button
@@ -101,72 +103,109 @@ const ORDER: readonly DevCard[] = [...PLAYABLE, 'landmark'];
   `,
   styles: `
     :host {
-      display: grid;
-      gap: var(--bt-space-3);
+      position: relative;
+      display: block;
     }
-    .title {
-      font-size: var(--bt-text-lg);
+    .empty {
+      color: var(--bt-color-text-muted);
+      font-size: var(--bt-text-sm);
     }
-    ul {
+    .cards {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--bt-space-2);
       margin: 0;
       padding: 0;
       list-style: none;
     }
-    .resources {
-      display: flex;
-      flex-wrap: wrap;
-      gap: var(--bt-space-2);
-    }
-    .resources li {
-      display: inline-flex;
-      align-items: center;
-      gap: var(--bt-space-2);
-      padding: var(--bt-space-1) var(--bt-space-3);
-      border-radius: var(--bt-radius-md);
-      background: var(--bt-color-surface-sunken);
-      font-size: var(--bt-text-sm);
-    }
-    .resources li.none {
-      color: var(--bt-color-text-muted);
-    }
-    .count {
-      font-family: var(--bt-font-mono);
-      font-weight: 600;
-    }
-    .cards {
+    .card {
+      position: relative;
       display: grid;
-      gap: var(--bt-space-2);
-    }
-    .cards li {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--bt-space-3);
-      padding: var(--bt-space-3);
-      border: var(--bt-border-width) solid var(--bt-color-border);
+      align-content: start;
+      justify-items: center;
+      gap: var(--bt-space-1);
+      width: 4.5rem;
+      min-height: 6rem;
+      padding: var(--bt-space-3) var(--bt-space-2) var(--bt-space-2);
+      border: var(--bt-border-width) solid var(--bt-color-border-strong);
+      border-top: 6px solid var(--card-colour);
       border-radius: var(--bt-radius-md);
       background: var(--bt-color-surface-raised);
+      box-shadow: var(--bt-shadow-sm);
+      text-align: center;
     }
-    .card-text p {
-      margin-top: var(--bt-space-1);
-      color: var(--bt-color-text-muted);
+    .card.timber {
+      --card-colour: var(--bt-color-terrain-forest);
+    }
+    .card.clay {
+      --card-colour: var(--bt-color-terrain-hills);
+    }
+    .card.wool {
+      --card-colour: var(--bt-color-terrain-pasture);
+    }
+    .card.grain {
+      --card-colour: var(--bt-color-terrain-fields);
+    }
+    .card.ore {
+      --card-colour: var(--bt-color-terrain-mountains);
+    }
+    .icon {
+      font-size: 1.75rem;
+    }
+    .name {
+      font-size: var(--bt-text-xs);
+      font-weight: 600;
+    }
+    .count {
+      position: absolute;
+      top: calc(-1 * var(--bt-space-2));
+      right: calc(-1 * var(--bt-space-2));
+      min-width: 1.5rem;
+      padding: 0 var(--bt-space-1);
+      border-radius: var(--bt-radius-pill);
+      background: var(--bt-color-accent);
+      color: var(--bt-color-on-accent);
+      font-family: var(--bt-font-mono);
+      font-size: var(--bt-text-xs);
+      font-weight: 600;
+      line-height: 1.5rem;
+    }
+    .card.dev {
+      --card-colour: var(--bt-color-accent);
+      width: 9rem;
+      justify-items: start;
+      text-align: left;
+    }
+    .card.dev .name {
+      font-family: var(--bt-font-display);
       font-size: var(--bt-text-sm);
     }
-    .times {
-      margin-left: var(--bt-space-1);
-      font-family: var(--bt-font-mono);
+    .card.dev.waiting {
+      border-style: dashed;
+      box-shadow: none;
+    }
+    .text {
+      color: var(--bt-color-text-muted);
+      font-size: var(--bt-text-xs);
+      line-height: var(--bt-leading-tight);
     }
     .new {
-      margin-left: var(--bt-space-2);
       color: var(--bt-color-warning-text);
       font-size: var(--bt-text-xs);
     }
     .picker {
+      position: absolute;
+      bottom: calc(100% + var(--bt-space-2));
+      left: 0;
+      z-index: 6;
       display: grid;
       gap: var(--bt-space-3);
-      padding: var(--bt-space-3);
-      border-radius: var(--bt-radius-md);
-      background: var(--bt-color-surface-sunken);
+      width: min(22rem, 100%);
+      padding: var(--bt-space-4);
+      border: var(--bt-border-width) solid var(--bt-color-border);
+      border-radius: var(--bt-radius-lg);
+      background: var(--bt-color-surface-raised);
+      box-shadow: var(--bt-shadow-lg);
     }
     .picker-actions {
       display: flex;
@@ -194,8 +233,9 @@ export class CatanHandComponent {
     label: RESOURCE_NAME[r],
   }));
 
+  /** Only the resources the player holds, in the usual order. */
   protected readonly resources = computed(() =>
-    RESOURCES.map((resource) => ({
+    RESOURCES.filter((r) => this.hand().resources[r] > 0).map((resource) => ({
       resource,
       name: RESOURCE_NAME[resource],
       count: this.hand().resources[resource],

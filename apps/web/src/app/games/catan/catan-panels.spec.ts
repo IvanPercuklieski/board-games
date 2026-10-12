@@ -87,12 +87,12 @@ describe('CatanHandComponent', () => {
     await render(CatanHandComponent, {
       inputs: { hand: hand(['guard', 'landmark']), bank, canPlay: true },
     });
-    const resources = screen.getByRole('list', { name: 'Resources' });
-    expect(
-      within(resources)
-        .getAllByRole('listitem')
-        .map((li) => li.textContent!.trim()),
-    ).toEqual(['1 Timber', '0 Clay', '2 Wool', '0 Grain', '0 Ore']);
+    const cards = within(screen.getByRole('list', { name: 'Your cards' })).getAllByRole('listitem');
+    // only resources held, as cards with a count when more than one
+    expect(cards.slice(0, 2).map((li) => li.textContent!.replace(/\s+/g, ' ').trim())).toEqual([
+      'Timber',
+      'Wool ×2',
+    ]);
     expect(screen.getByRole('button', { name: 'Play Guard' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Play Landmark' })).toBeNull();
   });
