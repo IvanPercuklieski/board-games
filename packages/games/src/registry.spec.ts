@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Catan } from './catan/catan';
 import { gameRegistry, getGameDefinition } from './registry';
 import { TicTacToe } from './tictactoe/tictactoe';
 
@@ -11,6 +12,17 @@ describe('game registry', () => {
       maxPlayers: 2,
       game: TicTacToe,
     });
+  });
+
+  it('registers Catan for 3-6 players', () => {
+    expect(getGameDefinition('catan')).toEqual({
+      id: 'catan',
+      displayName: 'Catan',
+      minPlayers: 3,
+      maxPlayers: 6,
+      game: Catan,
+    });
+    expect(Catan).toMatchObject({ minPlayers: 3, maxPlayers: 6 });
   });
 
   it('uses the boardgame.io game name as the registry id', () => {

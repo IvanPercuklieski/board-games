@@ -36,7 +36,7 @@ describe('game catalog', () => {
   it('does not import game rules, so the browser catalog stays small', () => {
     const source = readFileSync(new URL('./catalog.ts', import.meta.url), 'utf8');
     expect(source).not.toMatch(/from ['"]boardgame\.io/);
-    expect(source).not.toMatch(/from ['"]\.\/(registry|tictactoe)/);
+    expect(source).not.toMatch(/from ['"]\.\/(registry|\w+\/)/); // no game folders
   });
 
   it('returns undefined for unknown games', () => {

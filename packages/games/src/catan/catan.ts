@@ -19,6 +19,7 @@ import { bankTrade, cancelTrade, confirmTrade, offerTrade, respondTrade } from '
 import {
   discard,
   endTurn,
+  finishSpecialBuild,
   makeRollDice,
   moveBandit,
   rollTwoDice,
@@ -170,6 +171,9 @@ export function makeCatan({ dice = rollTwoDice }: CatanOptions = {}): Game<Catan
                 ...cardPlays,
                 endTurn,
               },
+            },
+            specialBuild: {
+              moves: { buildRoad, buildSettlement, buildCity, buyCard, finishSpecialBuild },
             },
             trading: { moves: { confirmTrade, cancelTrade } },
             tradeResponse: { moves: { respondTrade } },

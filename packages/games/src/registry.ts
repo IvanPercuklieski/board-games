@@ -1,4 +1,5 @@
 import type { Game } from 'boardgame.io';
+import { Catan } from './catan/catan';
 import { getCatalogEntry, type GameCatalogEntry } from './catalog';
 import { TicTacToe } from './tictactoe/tictactoe';
 
@@ -17,7 +18,7 @@ function define(game: Game<any>): GameDefinition {
   return { id, displayName, minPlayers, maxPlayers, game };
 }
 
-export const gameRegistry: readonly GameDefinition[] = [define(TicTacToe)];
+export const gameRegistry: readonly GameDefinition[] = [define(TicTacToe), define(Catan)];
 
 export function getGameDefinition(id: string): GameDefinition | undefined {
   return gameRegistry.find((def) => def.id === id);

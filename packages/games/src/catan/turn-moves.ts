@@ -134,7 +134,30 @@ export const moveBandit: LongFormMove<CatanState> = {
   },
 };
 
-export const endTurn: MoveFn<CatanState> = ({ events }) => {
-  events.endTurn();
+/**
+ * Ends the turn. On the large island (5-6 players) every other player first gets a special
+ * build, one at a time in turn order.
+ */
+export const endTurn: MoveFn<CatanState> = ({ G, ctx, events, playerID }) => {
+  if (G.board.size !== 'large') {
+    events.endTurn();
+    return undefined;
+  }
+  const at = ctx.playOrder.indexOf(playerID);
+  G.turn.specialBuilders = Array.from(
+    { length: ctx.numPlayers - 1 },
+    (_, i) => ctx.playOrder[(at + 1 + i) % ctx.numPlayers]!,
+  );
+  goTo(events, G.turn.specialBuilders[0]!, 'specialBuild');
+  return undefined;
+};
+
+/** Ends this player's special build; the next player builds, or the next turn starts. */
+export const finishSpecialBuild: MoveFn<CatanState> = ({ G, events, playerID }) => {
+  if (G.turn.specialBuilders[0] !== playerID) return INVALID_MOVE;
+  G.turn.specialBuilders.shift();
+  const next = G.turn.specialBuilders[0];
+  if (next === undefined) events.endTurn();
+  else goTo(events, next, 'specialBuild');
   return undefined;
 };

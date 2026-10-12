@@ -36,7 +36,9 @@ describe('CatalogPage', () => {
 
   it('announces how many games are shown', async () => {
     await setup();
-    expect(screen.getByRole('status').textContent).toMatch(/1 game/);
+    expect(screen.getByRole('status').textContent).toMatch(
+      new RegExp(`\\b${gameCatalog.length} games\\b`),
+    );
   });
 
   it('filters by player count', async () => {
@@ -44,5 +46,6 @@ describe('CatalogPage', () => {
     const group = screen.getByRole('radiogroup', { name: 'Players' });
     await userEvent.click(within(group).getByRole('radio', { name: '2' }));
     expect(screen.getByRole('link', { name: /Tic-tac-toe/ })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /Catan/ })).toBeNull();
   });
 });

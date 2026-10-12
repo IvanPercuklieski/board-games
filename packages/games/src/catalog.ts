@@ -34,6 +34,22 @@ export const gameCatalog: readonly GameCatalogEntry[] = [
     playTimeMinutes: { min: 1, max: 5 },
     complexity: 'light',
   },
+  {
+    id: 'catan',
+    displayName: 'Catan',
+    minPlayers: 3,
+    maxPlayers: 6,
+    tagline: 'Settle an island, swap what you have for what you need, build to ten.',
+    description:
+      'Each player starts with two small settlements on a randomly laid island. Dice decide ' +
+      'which lands produce timber, clay, wool, grain and ore; spend them on roads, new ' +
+      'settlements, cities and cards, and haggle with the table for the rest. Watch out for ' +
+      'the Bandit on a seven. First to ten points wins. With five or six players the island ' +
+      'grows and everyone gets a chance to build between turns.',
+    tags: ['trading', 'building', 'dice', 'strategy'],
+    playTimeMinutes: { min: 60, max: 120 },
+    complexity: 'medium',
+  },
 ];
 
 export function getCatalogEntry(id: string): GameCatalogEntry | undefined {
