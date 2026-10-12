@@ -2,23 +2,26 @@
 // Every move acts for `playerID`, who may not be the current player during a special build.
 import type { MoveFn } from 'boardgame.io';
 import { INVALID_MOVE } from 'boardgame.io/core';
+import { logEvent } from './events';
 import { updateLongestTrail } from './longest-trail';
 import { canPlaceCity, canPlaceRoad, canPlaceSettlement } from './placement';
 import { COSTS, hasAll, transfer } from './resources';
-import type { CatanState } from './state';
+import type { BuildPiece, CatanState } from './state';
 
 function canPay(G: CatanState, playerID: string, cost: keyof typeof COSTS) {
   return hasAll(G.hands[playerID]!.resources, COSTS[cost]);
 }
 
-function pay(G: CatanState, playerID: string, cost: keyof typeof COSTS) {
-  transfer(G.hands[playerID]!.resources, G.bank, COSTS[cost]);
+/** Pays the bank for a piece and logs the build. */
+function payFor(G: CatanState, playerID: string, piece: BuildPiece) {
+  transfer(G.hands[playerID]!.resources, G.bank, COSTS[piece]);
+  logEvent(G, { kind: 'build', player: playerID, piece, free: false });
 }
 
 export const buildRoad: MoveFn<CatanState> = ({ G, playerID }, edge: unknown) => {
   if (typeof edge !== 'number' || !canPlaceRoad(G, playerID, edge)) return INVALID_MOVE;
   if (G.players[playerID]!.roads === 0 || !canPay(G, playerID, 'road')) return INVALID_MOVE;
-  pay(G, playerID, 'road');
+  payFor(G, playerID, 'road');
   G.roads[edge] = playerID;
   G.players[playerID]!.roads--;
   updateLongestTrail(G);
@@ -32,7 +35,7 @@ export const buildSettlement: MoveFn<CatanState> = ({ G, playerID }, vertex: unk
   if (G.players[playerID]!.settlements === 0 || !canPay(G, playerID, 'settlement')) {
     return INVALID_MOVE;
   }
-  pay(G, playerID, 'settlement');
+  payFor(G, playerID, 'settlement');
   G.buildings[vertex] = { owner: playerID, kind: 'settlement' };
   G.players[playerID]!.settlements--;
   updateLongestTrail(G); // a new settlement can cut a rival's trail
@@ -42,7 +45,7 @@ export const buildSettlement: MoveFn<CatanState> = ({ G, playerID }, vertex: unk
 export const buildCity: MoveFn<CatanState> = ({ G, playerID }, vertex: unknown) => {
   if (typeof vertex !== 'number' || !canPlaceCity(G, playerID, vertex)) return INVALID_MOVE;
   if (G.players[playerID]!.cities === 0 || !canPay(G, playerID, 'city')) return INVALID_MOVE;
-  pay(G, playerID, 'city');
+  payFor(G, playerID, 'city');
   G.buildings[vertex] = { owner: playerID, kind: 'city' };
   G.players[playerID]!.cities--;
   G.players[playerID]!.settlements++;

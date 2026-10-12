@@ -1,6 +1,7 @@
 import type { Ctx, LongFormMove, MoveFn } from 'boardgame.io';
 import { INVALID_MOVE } from 'boardgame.io/core';
 import type { DevCard } from './config';
+import { logEvent } from './events';
 import { updateLongestTrail } from './longest-trail';
 import { canPlaceRoad, roadSpots } from './placement';
 import { COSTS, hasAll, isResource, transfer } from './resources';
@@ -15,7 +16,9 @@ export const buyCard: LongFormMove<CatanState> = {
     const hand = G.hands[playerID]!;
     if (G.secret.devDeck.length === 0 || !hasAll(hand.resources, COSTS.card)) return INVALID_MOVE;
     transfer(hand.resources, G.bank, COSTS.card);
-    hand.newCards.push(G.secret.devDeck.pop()!);
+    const card = G.secret.devDeck.pop()!;
+    hand.newCards.push(card);
+    logEvent(G, { kind: 'buyCard', player: playerID, card });
     return undefined;
   },
 };
@@ -39,6 +42,7 @@ function currentStage(ctx: Ctx, playerID: string): 'roll' | 'actions' {
 export const playGuard: MoveFn<CatanState> = ({ G, ctx, events, playerID }) => {
   if (!canPlay(G, playerID, 'guard')) return INVALID_MOVE;
   discardPlayed(G, playerID, 'guard');
+  logEvent(G, { kind: 'playCard', player: playerID, card: 'guard' });
   G.players[playerID]!.guards++;
   updateStrongestGuard(G, playerID);
   G.turn.resume = currentStage(ctx, playerID);
@@ -51,6 +55,7 @@ export const playRoadCrew: MoveFn<CatanState> = ({ G, ctx, events, playerID }) =
   if (!canPlay(G, playerID, 'roadCrew') || supply === 0) return INVALID_MOVE;
   if (roadSpots(G, playerID).length === 0) return INVALID_MOVE;
   discardPlayed(G, playerID, 'roadCrew');
+  logEvent(G, { kind: 'playCard', player: playerID, card: 'roadCrew' });
   G.turn.freeRoads = Math.min(2, supply);
   G.turn.resume = currentStage(ctx, playerID);
   goTo(events, playerID, 'roadCrew');
@@ -62,6 +67,7 @@ export const placeFreeRoad: MoveFn<CatanState> = ({ G, events, playerID }, edge:
   G.roads[edge] = playerID;
   G.players[playerID]!.roads--;
   G.turn.freeRoads--;
+  logEvent(G, { kind: 'build', player: playerID, piece: 'road', free: true });
   updateLongestTrail(G);
   if (G.turn.freeRoads === 0 || roadSpots(G, playerID).length === 0) {
     G.turn.freeRoads = 0;
@@ -76,6 +82,7 @@ export const playWindfall: MoveFn<CatanState> = ({ G, playerID }, a: unknown, b:
   if (!hasAll(G.bank, wanted)) return INVALID_MOVE;
   discardPlayed(G, playerID, 'windfall');
   transfer(G.bank, G.hands[playerID]!.resources, wanted);
+  logEvent(G, { kind: 'windfall', player: playerID, resources: [a, b] });
   return undefined;
 };
 
@@ -85,9 +92,11 @@ export const playMarket: LongFormMove<CatanState> = {
     if (!isResource(resource) || !canPlay(G, playerID, 'market')) return INVALID_MOVE;
     discardPlayed(G, playerID, 'market');
     const mine = G.hands[playerID]!.resources;
+    const before = mine[resource];
     for (const [id, hand] of Object.entries(G.hands)) {
       if (id !== playerID) transfer(hand.resources, mine, { [resource]: hand.resources[resource] });
     }
+    logEvent(G, { kind: 'market', player: playerID, resource, total: mine[resource] - before });
     return undefined;
   },
 };

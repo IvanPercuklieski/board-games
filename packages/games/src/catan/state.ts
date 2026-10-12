@@ -68,6 +68,37 @@ export interface TurnState {
   specialBuilders: string[];
 }
 
+export type BuildPiece = 'road' | 'settlement' | 'city';
+
+/** Something that happened, as shown in the game log (without its id). */
+export type GameEventData =
+  | { kind: 'roll'; player: string; dice: [number, number] }
+  /** Cards from the bank: a roll, or the second setup settlement. */
+  | { kind: 'gain'; gains: Record<string, Partial<ResourceCounts>> }
+  | { kind: 'discard'; player: string; cards: Partial<ResourceCounts> }
+  | { kind: 'bandit'; player: string; hex: number }
+  /** `resource` is visible to the thief and the victim only (null for everyone else). */
+  | { kind: 'steal'; thief: string; victim: string; resource: Resource | null }
+  /** `free`: setup placements and Road Crew roads. */
+  | { kind: 'build'; player: string; piece: BuildPiece; free: boolean }
+  /** `card` is visible to the buyer only (null for everyone else). */
+  | { kind: 'buyCard'; player: string; card: DevCard | null }
+  | { kind: 'playCard'; player: string; card: 'guard' | 'roadCrew' }
+  | { kind: 'windfall'; player: string; resources: [Resource, Resource] }
+  | { kind: 'market'; player: string; resource: Resource; total: number }
+  | { kind: 'bankTrade'; player: string; give: Resource; count: number; get: Resource }
+  | {
+      kind: 'trade';
+      from: string;
+      to: string;
+      give: Partial<ResourceCounts>;
+      want: Partial<ResourceCounts>;
+    }
+  /** An award changed hands (`player` null: nobody holds it now). */
+  | { kind: 'award'; award: 'longestTrail' | 'strongestGuard'; player: string | null };
+
+export type GameEvent = GameEventData & { id: number };
+
 export interface CatanState {
   board: Board;
   bandit: number;
@@ -83,6 +114,8 @@ export interface CatanState {
   setupSettlement: number | null;
   lastRoll: [number, number] | null;
   turn: TurnState;
+  /** The most recent events, oldest first (bounded, see `MAX_EVENTS`). */
+  events: GameEvent[];
   /** Hidden from every player by `playerView`. */
   secret: { devDeck: DevCard[] };
   /** Only in a player's view: what hidden information looks like from outside. */

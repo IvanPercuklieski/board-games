@@ -26,6 +26,8 @@ export { POINTS_TO_WIN, publicPoints, victoryPoints } from './catan/scoring';
 export type {
   Building,
   CatanState,
+  GameEvent as CatanEvent,
+  GameEventData as CatanEventData,
   Hand,
   ResourceCounts,
   Stage as CatanStage,

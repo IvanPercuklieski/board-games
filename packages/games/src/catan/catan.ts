@@ -9,6 +9,7 @@ import {
   playWindfall,
 } from './card-moves';
 import { BOARD_CONFIG, boardSizeFor, type DevCard } from './config';
+import { eventAsSeenBy } from './events';
 import { getGeometry } from './geometry';
 import { noResources, total } from './resources';
 import { setupBoard } from './setup-board';
@@ -79,6 +80,7 @@ export function catanPlayerView({
       Object.entries(G.hands).map(([id, hand]) => [id, id === playerID ? hand : emptyHand()]),
     ),
     secret: { devDeck: [] },
+    events: G.events.map((event) => eventAsSeenBy(event, playerID)),
     counts: {
       handSizes: Object.fromEntries(
         Object.entries(G.hands).map(([id, hand]) => [
@@ -119,6 +121,7 @@ export function makeCatan({ dice = rollTwoDice }: CatanOptions = {}): Game<Catan
         setupSettlement: null,
         lastRoll: null,
         turn: freshTurn(),
+        events: [],
         secret: { devDeck: random.Shuffle(deck) },
       };
     },

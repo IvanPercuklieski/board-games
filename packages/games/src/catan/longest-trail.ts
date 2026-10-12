@@ -1,3 +1,4 @@
+import { logEvent } from './events';
 import { getGeometry } from './geometry';
 import type { CatanState } from './state';
 
@@ -44,5 +45,8 @@ export function updateLongestTrail(G: CatanState) {
   } else if (holder === null || lengths[holder] !== best) {
     const leaders = Object.keys(lengths).filter((id) => lengths[id] === best);
     G.awards.longestTrail = leaders.length === 1 ? leaders[0]! : null;
+  }
+  if (G.awards.longestTrail !== holder) {
+    logEvent(G, { kind: 'award', award: 'longestTrail', player: G.awards.longestTrail });
   }
 }

@@ -15,6 +15,7 @@ import type { GameBoard } from '../boards';
 import { CatanDiceComponent } from './catan-dice.component';
 import { CatanHandComponent, type CardPlay } from './catan-hand.component';
 import { describeCounts } from './catan-labels';
+import { CatanLogComponent } from './catan-log.component';
 import { CatanMapComponent, type MapTargets } from './catan-map.component';
 import { CatanOfferComponent } from './catan-offer.component';
 import { CatanPlayersComponent } from './catan-players.component';
@@ -41,6 +42,7 @@ const BUILD: Record<BuildMode, { label: string; verb: string; cost: keyof typeof
     ButtonComponent,
     CatanDiceComponent,
     CatanHandComponent,
+    CatanLogComponent,
     CatanMapComponent,
     CatanOfferComponent,
     CatanPlayersComponent,
@@ -202,6 +204,7 @@ const BUILD: Record<BuildMode, { label: string; verb: string; cost: keyof typeof
             (play)="playCard($event)"
           />
           <bt-catan-players [state]="G" [players]="players()" [stages]="stages()" />
+          <bt-catan-log [state]="G" [me]="me()" [players]="players()" />
           <p class="deck">{{ deckText() }}</p>
         </aside>
       </div>

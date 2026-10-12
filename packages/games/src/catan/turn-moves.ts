@@ -1,6 +1,7 @@
 import type { Ctx, LongFormMove, MoveFn } from 'boardgame.io';
 import { INVALID_MOVE } from 'boardgame.io/core';
 import { RESOURCES, TERRAIN_RESOURCE } from './config';
+import { logEvent, nonZero } from './events';
 import { getGeometry } from './geometry';
 import { isIndex } from './placement';
 import { hasAll, noResources, parseCounts, total, transfer } from './resources';
@@ -41,6 +42,7 @@ function production(G: CatanState, sum: number): Record<string, ResourceCounts> 
  */
 function produce(G: CatanState, sum: number) {
   const owed = production(G, sum);
+  const paid: Record<string, ResourceCounts> = {};
   for (const r of RESOURCES) {
     const owners = Object.keys(owed).filter((id) => owed[id]![r] > 0);
     const needed = owners.reduce((n, id) => n + owed[id]![r], 0);
@@ -48,8 +50,15 @@ function produce(G: CatanState, sum: number) {
     for (const id of owners) {
       const n = Math.min(owed[id]![r], G.bank[r]);
       transfer(G.bank, G.hands[id]!.resources, { [r]: n });
+      (paid[id] ??= noResources())[r] += n;
     }
   }
+  const gains = Object.fromEntries(
+    Object.entries(paid)
+      .map(([id, counts]) => [id, nonZero(counts)] as const)
+      .filter(([, counts]) => Object.keys(counts).length > 0),
+  );
+  if (Object.keys(gains).length > 0) logEvent(G, { kind: 'gain', gains });
 }
 
 /** Players with more than seven cards discard half (rounded down), then the bandit moves. */
@@ -80,6 +89,7 @@ export function makeRollDice(roll: DiceRoller): LongFormMove<CatanState> {
       }
       G.turn.rolled = true;
       G.lastRoll = dice;
+      logEvent(G, { kind: 'roll', player: playerID, dice });
       const sum = dice[0] + dice[1];
       if (sum === 7) {
         startSeven(G, ctx, events);
@@ -100,6 +110,7 @@ export const discard: MoveFn<CatanState> = ({ G, ctx, events, playerID }, cards:
     return INVALID_MOVE;
   }
   transfer(hand, G.bank, counts);
+  logEvent(G, { kind: 'discard', player: playerID, cards: nonZero(counts) });
   delete G.turn.discards[playerID];
   askForDiscards(G, ctx, events);
   return undefined;
@@ -131,11 +142,13 @@ export const moveBandit: LongFormMove<CatanState> = {
       return INVALID_MOVE;
     }
     G.bandit = hex;
+    logEvent(G, { kind: 'bandit', player: playerID, hex });
     if (typeof victim === 'string') {
       const theirs = G.hands[victim]!.resources;
       const pool = RESOURCES.flatMap((r) => Array<typeof r>(theirs[r]).fill(r));
       const stolen = pool[random.Die(pool.length) - 1]!;
       transfer(theirs, G.hands[playerID]!.resources, { [stolen]: 1 });
+      logEvent(G, { kind: 'steal', thief: playerID, victim, resource: stolen });
     }
     goTo(events, playerID, G.turn.resume);
     return undefined;

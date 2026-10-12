@@ -1,3 +1,4 @@
+import { logEvent } from './events';
 import type { CatanState } from './state';
 
 export const POINTS_TO_WIN = 10;
@@ -25,5 +26,8 @@ export function updateStrongestGuard(G: CatanState, playerID: string) {
   const guards = G.players[playerID]!.guards;
   const holder = G.awards.strongestGuard;
   if (guards < MIN_GUARDS || holder === playerID) return;
-  if (holder === null || guards > G.players[holder]!.guards) G.awards.strongestGuard = playerID;
+  if (holder === null || guards > G.players[holder]!.guards) {
+    G.awards.strongestGuard = playerID;
+    logEvent(G, { kind: 'award', award: 'strongestGuard', player: playerID });
+  }
 }

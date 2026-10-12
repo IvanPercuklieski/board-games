@@ -1,6 +1,7 @@
 import type { LongFormMove, MoveFn } from 'boardgame.io';
 import { INVALID_MOVE } from 'boardgame.io/core';
 import { RESOURCES, type Resource } from './config';
+import { logEvent, nonZero } from './events';
 import { getGeometry } from './geometry';
 import { hasAll, isResource, parseCounts, total, transfer } from './resources';
 import type { CatanState } from './state';
@@ -28,6 +29,7 @@ export const bankTrade: MoveFn<CatanState> = ({ G, playerID }, give: unknown, ge
   if (hand[give] < ratio || G.bank[get] < 1) return INVALID_MOVE;
   transfer(hand, G.bank, { [give]: ratio });
   transfer(G.bank, hand, { [get]: 1 });
+  logEvent(G, { kind: 'bankTrade', player: playerID, give, count: ratio, get });
   return undefined;
 };
 
@@ -76,6 +78,13 @@ export const confirmTrade: LongFormMove<CatanState> = {
     if (!hasAll(mine, trade.give) || !hasAll(theirs, trade.want)) return INVALID_MOVE;
     transfer(mine, theirs, trade.give);
     transfer(theirs, mine, trade.want);
+    logEvent(G, {
+      kind: 'trade',
+      from: playerID,
+      to: partner,
+      give: nonZero(trade.give),
+      want: nonZero(trade.want),
+    });
     G.turn.trade = null;
     goTo(events, playerID, 'actions');
     return undefined;
