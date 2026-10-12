@@ -58,7 +58,10 @@ const BUILD: Record<BuildMode, { label: string; verb: string; cost: keyof typeof
           </div>
 
           <bt-catan-map [state]="G" [targets]="targets()" (picked)="pick($event)" />
+        </div>
 
+        <!-- next to the map on wide screens, under it on phones -->
+        <div class="act">
           @switch (sit()?.kind) {
             @case ('roll') {
               <div class="panel actions">
@@ -217,9 +220,23 @@ const BUILD: Record<BuildMode, { label: string; verb: string; cost: keyof typeof
     @media (min-width: 64rem) {
       .layout {
         grid-template-columns: minmax(0, 1.7fr) minmax(18rem, 1fr);
+        grid-template-rows: auto 1fr;
+        grid-template-areas:
+          'main act'
+          'main side';
+      }
+      .main {
+        grid-area: main;
+      }
+      .act {
+        grid-area: act;
+      }
+      .side {
+        grid-area: side;
       }
     }
     .main,
+    .act,
     .side {
       display: grid;
       gap: var(--bt-space-4);

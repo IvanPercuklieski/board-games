@@ -272,7 +272,7 @@ function pips(token: number): number[] {
       padding: 0;
       border: 2px solid var(--bt-color-accent);
       border-radius: 50%;
-      background: color-mix(in srgb, var(--bt-color-surface-raised) 75%, transparent);
+      background: color-mix(in srgb, var(--bt-color-surface-raised) 55%, transparent);
       cursor: pointer;
       transition:
         background-color var(--bt-duration-fast) var(--bt-ease-standard),
@@ -288,16 +288,16 @@ function pips(token: number): number[] {
       scale: 1.15;
     }
     .target.vertex {
-      width: clamp(1.1rem, 3.4%, 1.75rem);
+      width: clamp(1.5rem, 3.4%, 1.75rem); /* at least 24px to tap */
       aspect-ratio: 1;
     }
     .target.edge {
-      width: clamp(0.9rem, 2.6%, 1.4rem);
+      width: 1.5rem;
       aspect-ratio: 1;
       border-style: dashed;
     }
     .target.hex {
-      width: clamp(1.6rem, 6%, 2.75rem);
+      width: clamp(2rem, 6%, 2.75rem);
       aspect-ratio: 1;
     }
   `,
