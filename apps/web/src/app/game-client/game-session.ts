@@ -16,6 +16,19 @@ export interface SessionPlayer {
   isConnected?: boolean;
 }
 
+/** A table chat message (boardgame.io relays these; the server never stores them). */
+export interface ChatMessage {
+  id: string;
+  /** playerID of the sender. */
+  sender: string;
+  payload: string;
+}
+
+/** Same limit as the server's chat guard (`socket-security.ts`). */
+export const CHAT_MAX_LENGTH = 200;
+/** Messages kept for display; older ones drop off. */
+const CHAT_SHOWN = 100;
+
 export interface GameSessionOptions<G> {
   game: Game<G>;
   matchID: string;
@@ -44,6 +57,8 @@ export class GameSession<G> {
   private readonly playerNames: readonly string[];
   private readonly state = signal<ClientState | null>(null);
   private readonly matchData = signal<BgioClient['matchData']>(undefined);
+  private readonly chat = signal<readonly ChatMessage[]>([]);
+  private chatReceived = 0;
   private unsubscribe: (() => void) | undefined;
   private stopped = false;
 
@@ -53,6 +68,8 @@ export class GameSession<G> {
   readonly isConnected = computed(() => this.state()?.isConnected ?? false);
   readonly currentPlayer = computed(() => this.ctx()?.currentPlayer);
   readonly gameover = computed(() => this.ctx()?.gameover as unknown);
+  /** The latest table chat messages since this browser joined (oldest first). */
+  readonly chatMessages = this.chat.asReadonly();
   /**
    * Only while connected: the client starts from a local copy of the start state, and a move
    * made before (re)connecting would reach the server ahead of the sync that proves this
@@ -101,6 +118,12 @@ export class GameSession<G> {
       if (this.stopped) return;
       this.state.set(state);
       this.matchData.set(this.client.matchData);
+      // boardgame.io keeps every message it received; only show (and re-render on) new ones
+      const received = this.client.chatMessages;
+      if (received.length !== this.chatReceived) {
+        this.chatReceived = received.length;
+        this.chat.set(received.slice(-CHAT_SHOWN) as ChatMessage[]);
+      }
     });
     this.client.start();
   }
@@ -109,6 +132,13 @@ export class GameSession<G> {
   move(name: string, ...args: unknown[]) {
     if (this.stopped || !this.isConnected()) return;
     this.client.moves[name]?.(...args);
+  }
+
+  /** Sends a chat line to the table (trimmed; ignored if empty or too long). */
+  sendChat(text: string) {
+    const line = text.trim();
+    if (this.stopped || !this.isConnected() || !line || line.length > CHAT_MAX_LENGTH) return;
+    this.client.sendChatMessage(line);
   }
 
   stop() {

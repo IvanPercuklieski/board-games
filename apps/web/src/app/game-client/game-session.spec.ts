@@ -40,6 +40,23 @@ describe('GameSession', () => {
     expect(ivan.currentPlayer()).toBe('0');
   });
 
+  it('sends chat messages to the table and lists them in order', async () => {
+    const [ivan, mara] = table();
+    open.push(ivan, mara);
+    await vi.waitFor(() => expect(ivan.isConnected() && mara.isConnected()).toBe(true));
+    ivan.sendChat('  good luck  ');
+    ivan.sendChat('   '); // nothing to send
+    ivan.sendChat('x'.repeat(201)); // too long
+    mara.sendChat('you too');
+    await vi.waitFor(() =>
+      expect(mara.chatMessages().map((m) => [m.sender, m.payload])).toEqual([
+        ['0', 'good luck'],
+        ['1', 'you too'],
+      ]),
+    );
+    expect(ivan.chatMessages()).toHaveLength(2);
+  });
+
   it('creates a local match with the given number of seats', async () => {
     const session = new GameSession<CatanState>({
       game: Catan,

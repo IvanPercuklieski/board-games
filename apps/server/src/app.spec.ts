@@ -490,3 +490,33 @@ describe('websocket origin', () => {
     expect(await connectFrom(url, '/tictactoe')).toBe('connected');
   });
 });
+
+describe('table chat', () => {
+  it('relays short messages to the table, and drops long or flooding ones', async () => {
+    const { url, db } = await start();
+    const { matchID, seats } = await createSeatedMatch(db, ['Alice', 'Bob']);
+    const alice = connectPlayer(url, matchID, seats[0]!);
+    const bob = connectPlayer(url, matchID, seats[1]!);
+    try {
+      await waitForState(alice, (s) => s.isConnected);
+      await waitForState(bob, (s) => s.isConnected);
+      alice.sendChatMessage('x'.repeat(201)); // too long: dropped
+      for (let i = 1; i <= 6; i++) alice.sendChatMessage(`hello ${i}`); // the 6th is over the limit
+      await eventually(async () => {
+        expect(bob.chatMessages.map((m) => m.payload)).toEqual([
+          'hello 1',
+          'hello 2',
+          'hello 3',
+          'hello 4',
+          'hello 5',
+        ]);
+      });
+      await sleep(300);
+      expect(bob.chatMessages).toHaveLength(5);
+      expect(bob.chatMessages[0]!.sender).toBe('0');
+    } finally {
+      alice.stop();
+      bob.stop();
+    }
+  });
+});
