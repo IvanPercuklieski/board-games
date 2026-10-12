@@ -31,7 +31,7 @@ describe('rooms flow on board-games-dev', () => {
 
     const app = await createApp({ config }).start();
     try {
-      const room = await service.createRoom(hostId, { gameId: 'tictactoe', maxSeats: 2 });
+      const room = await service.createRoom(hostId, { gameId: 'tictactoe' });
       const token = new URL(room.inviteUrl).hash.slice(3);
       const bobSeat = await service.join(room.roomId, { token, name: 'Bob' });
       await service.start(hostId, room.roomId);

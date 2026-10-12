@@ -37,10 +37,12 @@ export const seatInfoSchema = z.object({
 
 // --- requests (strict: unknown fields are rejected) -----------------------------
 
-/** Which game a room plays and how many seats it has (creating a room or changing its game). */
+/**
+ * Which game a room plays (creating a room or changing its game). The room takes up to the
+ * game's maximum number of players; the seat count is not chosen.
+ */
 const roomGameSchema = z.strictObject({
   gameId: gameIdSchema,
-  maxSeats: z.int().check(z.minimum(1), z.maximum(LIMITS.maxSeats)),
 });
 
 export const createRoomRequestSchema = roomGameSchema;

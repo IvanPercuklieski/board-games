@@ -27,10 +27,10 @@ describe('ApiClient', () => {
   afterEach(() => http.verify());
 
   it('creates a room as the logged-in host and validates the response', async () => {
-    const result = api.createRoom({ gameId: 'tictactoe', maxSeats: 2 });
+    const result = api.createRoom({ gameId: 'tictactoe' });
     const req = await pending('POST', '/api/rooms');
     expect(req.request.headers.get('Authorization')).toBe('Bearer host-token');
-    expect(req.request.body).toEqual({ gameId: 'tictactoe', maxSeats: 2 });
+    expect(req.request.body).toEqual({ gameId: 'tictactoe' });
     req.flush({
       roomId,
       inviteUrl: `https://x.test/join/${roomId}#t=${secret}`,
@@ -117,10 +117,10 @@ describe('ApiClient', () => {
   });
 
   it('changes the game of a room as the host and returns the room summary', async () => {
-    const result = api.updateRoom(roomId, { gameId: 'tictactoe', maxSeats: 2 });
+    const result = api.updateRoom(roomId, { gameId: 'tictactoe' });
     const req = await pending('PATCH', `/api/rooms/${roomId}`);
     expect(req.request.headers.get('Authorization')).toBe('Bearer host-token');
-    expect(req.request.body).toEqual({ gameId: 'tictactoe', maxSeats: 2 });
+    expect(req.request.body).toEqual({ gameId: 'tictactoe' });
     req.flush({
       roomId,
       gameId: 'tictactoe',

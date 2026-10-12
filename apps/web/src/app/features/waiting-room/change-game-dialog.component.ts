@@ -1,17 +1,15 @@
 import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { gameCatalog, type GameCatalogEntry } from '@board-table/games/catalog';
-import { LIMITS, type RoomSummary } from '@board-table/shared';
+import type { RoomSummary } from '@board-table/shared';
 import { firstValueFrom } from 'rxjs';
 import { ApiClient } from '../../core/api-client';
 import { asyncAction } from '../../core/async-action';
 import { ButtonComponent } from '../../ui/button/button.component';
-import { SegmentedComponent } from '../../ui/segmented/segmented.component';
 
 export interface ChangeGameData {
   roomId: string;
   gameId: string;
-  maxSeats: number;
   /** Players seated right now; every new game must fit them. */
   seated: number;
   /** Defaults to the full catalog; tests pass games with other player ranges. */
@@ -35,13 +33,6 @@ export function gameChoices(games: readonly GameCatalogEntry[], seated: number):
   }));
 }
 
-/** Seat counts the room can have with this game, keeping everyone who is seated. */
-export function seatChoices(game: GameCatalogEntry, seated: number): number[] {
-  const min = Math.max(game.minPlayers, seated);
-  const max = Math.min(game.maxPlayers, LIMITS.maxSeats);
-  return Array.from({ length: Math.max(0, max - min + 1) }, (_, i) => min + i);
-}
-
 /** Opens the dialog; resolves with the updated room, or undefined if nothing changed. */
 export async function openChangeGameDialog(
   dialog: Dialog,
@@ -63,10 +54,10 @@ const players = (n: number) => (n === 1 ? '1 player' : `${n} players`);
 
 let nextId = 0;
 
-/** The host picks another game (and seat count) for a waiting room. */
+/** The host picks another game for a waiting room (open up to that game's maximum). */
 @Component({
   selector: 'bt-change-game-dialog',
-  imports: [ButtonComponent, SegmentedComponent],
+  imports: [ButtonComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     role: 'dialog',
@@ -100,17 +91,6 @@ let nextId = 0;
         </label>
       }
     </fieldset>
-    @if (seatOptions().length > 1) {
-      <div class="seats">
-        <span class="label">Seats</span>
-        <bt-segmented
-          label="Seats"
-          [options]="seatOptions()"
-          [value]="maxSeats()"
-          (valueChange)="maxSeats.set($event!)"
-        />
-      </div>
-    }
     <div class="actions">
       <button bt-button variant="ghost" (click)="ref.close(undefined)">Cancel</button>
       <button bt-button [loading]="saveAction.busy()" (click)="saveAction.run()">Save</button>
@@ -173,15 +153,6 @@ let nextId = 0;
       color: var(--bt-color-text-muted);
       font-size: var(--bt-text-sm);
     }
-    .seats {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: var(--bt-space-3);
-    }
-    .label {
-      font-weight: 600;
-    }
     .actions {
       display: flex;
       justify-content: flex-end;
@@ -200,17 +171,6 @@ export class ChangeGameDialogComponent {
   protected readonly choices = gameChoices(this.data.games ?? gameCatalog, this.data.seated);
 
   protected readonly gameId = signal(this.data.gameId);
-  protected readonly maxSeats = signal(this.data.maxSeats);
-
-  private readonly game = computed(
-    () => this.choices.find((c) => c.game.id === this.gameId())?.game,
-  );
-  protected readonly seatOptions = computed(() => {
-    const game = this.game();
-    return game
-      ? seatChoices(game, this.data.seated).map((n) => ({ value: n, label: String(n) }))
-      : [];
-  });
 
   protected range(game: GameCatalogEntry) {
     return game.minPlayers === game.maxPlayers
@@ -224,17 +184,11 @@ export class ChangeGameDialogComponent {
 
   protected choose(game: GameCatalogEntry) {
     this.gameId.set(game.id);
-    const options = seatChoices(game, this.data.seated);
-    // keep the seat count if the new game allows it, else the smallest that fits everyone
-    if (!options.includes(this.maxSeats())) this.maxSeats.set(options[0] ?? this.data.seated);
   }
 
   protected readonly saveAction = asyncAction(
     async () => {
-      const room = await this.api.updateRoom(this.data.roomId, {
-        gameId: this.gameId(),
-        maxSeats: this.maxSeats(),
-      });
+      const room = await this.api.updateRoom(this.data.roomId, { gameId: this.gameId() });
       this.ref.close(room);
     },
     { context: 'The game couldn’t be changed.' },

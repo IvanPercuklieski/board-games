@@ -42,7 +42,7 @@ async function setup(
       await call('/api/rooms', {
         method: 'POST',
         headers: { authorization: `Bearer ${aliceToken}` },
-        json: { gameId: 'tictactoe', maxSeats: 2 },
+        json: { gameId: 'tictactoe' },
       })
     ).json(),
   );
@@ -87,7 +87,7 @@ describe('room connection: access', () => {
     const other = await t.call('/api/rooms', {
       method: 'POST',
       headers: { authorization: `Bearer ${t.aliceToken}` },
-      json: { gameId: 'tictactoe', maxSeats: 2 },
+      json: { gameId: 'tictactoe' },
     });
     const otherRoom = createRoomResponseSchema.parse(await other.json());
 

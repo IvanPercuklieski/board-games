@@ -23,7 +23,10 @@ async function setup(gameId: string, createRoom: () => Promise<unknown>) {
 }
 
 describe('GameDetailPage', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear(); // seats are kept per window too (SeatStore)
+  });
 
   it('describes the game', async () => {
     await setup('tictactoe', async () => ({}));
@@ -39,10 +42,22 @@ describe('GameDetailPage', () => {
       seat: { seatIndex: 0, credentials: secret },
     }));
     await userEvent.click(screen.getByRole('button', { name: 'Host a game' }));
-    expect(api.createRoom).toHaveBeenCalledWith({ gameId: 'tictactoe', maxSeats: 2 });
+    expect(api.createRoom).toHaveBeenCalledWith({ gameId: 'tictactoe' });
     expect(seats.seat(roomId)).toEqual({ seatIndex: 0, credentials: secret });
     expect(seats.inviteUrl(roomId)).toBe(inviteUrl);
     expect(navigate).toHaveBeenCalledWith(`/rooms/${roomId}`);
+  });
+
+  it('opens the room up to the game’s maximum: no seat count to choose', async () => {
+    const { api } = await setup('catan', async () => ({
+      roomId,
+      inviteUrl,
+      seat: { seatIndex: 0, credentials: secret },
+    }));
+    expect(screen.getByText('Up to 6 players can join (at least 3 to start)')).toBeTruthy();
+    expect(screen.queryByRole('radiogroup')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Host a game' }));
+    expect(api.createRoom).toHaveBeenCalledWith({ gameId: 'catan' });
   });
 
   it('explains the room limit and links to My rooms', async () => {

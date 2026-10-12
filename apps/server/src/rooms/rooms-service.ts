@@ -82,7 +82,7 @@ export class RoomsService {
         id: roomId,
         gameId: game.id,
         hostUserId: userId,
-        maxSeats: req.maxSeats,
+        maxSeats: seatsFor(game),
         inviteTokenHash: hashSecret(token),
       },
       {
@@ -105,11 +105,11 @@ export class RoomsService {
     return { rooms: await Promise.all(rooms.map((room) => this.summary(room))) };
   }
 
-  /** Switches a waiting room to another game; the seated players must fit its seat count. */
+  /** Switches a waiting room to another game; the seated players must fit its maximum. */
   async changeGame(userId: string, roomId: string, req: UpdateRoomRequest): Promise<RoomSummary> {
     await this.hostedRoom(userId, roomId);
     const game = this.validGame(req);
-    const result = await this.repo.updateRoomGame(roomId, game.id, req.maxSeats);
+    const result = await this.repo.updateRoomGame(roomId, game.id, seatsFor(game));
     if (result === 'not_waiting') throw new ApiFailure('room_locked');
     if (result === 'too_many_players') throw new ApiFailure('too_many_players');
     this.seatEvents.roomChanged(roomId);
@@ -341,12 +341,10 @@ export class RoomsService {
     };
   }
 
-  /** The game, if it exists and `maxSeats` is within its player range. */
-  private validGame({ gameId, maxSeats }: { gameId: string; maxSeats: number }) {
+  /** The game, if it is registered. */
+  private validGame({ gameId }: { gameId: string }) {
     const game = this.findGame(gameId);
-    if (!game || maxSeats < game.minPlayers || maxSeats > game.maxPlayers) {
-      throw new ApiFailure('validation_error');
-    }
+    if (!game) throw new ApiFailure('validation_error');
     return game;
   }
 
@@ -383,3 +381,8 @@ export class RoomsService {
 /** Profile display names may be longer than seat names; cut by characters, not UTF-16 units. */
 const seatName = (displayName: string) =>
   [...displayName.trim()].slice(0, LIMITS.playerNameMaxLength).join('') || 'Host';
+
+/** A room takes up to the game's maximum number of players (rooms are open, not sized). */
+function seatsFor(game: { maxPlayers: number }): number {
+  return Math.min(game.maxPlayers, LIMITS.maxSeats);
+}

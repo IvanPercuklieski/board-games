@@ -10,7 +10,6 @@ import { ToastService } from '../../ui/toast/toast.service';
 import {
   ChangeGameDialogComponent,
   gameChoices,
-  seatChoices,
   type ChangeGameData,
 } from './change-game-dialog.component';
 
@@ -46,7 +45,7 @@ const summary = (over: Partial<RoomSummary> = {}): RoomSummary => ({
 
 async function setup(updateRoom = vi.fn(async () => summary())) {
   const close = vi.fn();
-  const data: ChangeGameData = { roomId, gameId: 'tictactoe', maxSeats: 2, seated: 2, games };
+  const data: ChangeGameData = { roomId, gameId: 'tictactoe', seated: 2, games };
   await render(ChangeGameDialogComponent, {
     providers: [
       provideRouter([]),
@@ -73,14 +72,6 @@ describe('gameChoices', () => {
   });
 });
 
-describe('seatChoices', () => {
-  it('runs from the larger of the game minimum and the seated players to the game maximum', () => {
-    expect(seatChoices(games[1]!, 2)).toEqual([3, 4, 5, 6]);
-    expect(seatChoices(games[1]!, 4)).toEqual([4, 5, 6]);
-    expect(seatChoices(games[0]!, 2)).toEqual([2]);
-  });
-});
-
 describe('ChangeGameDialogComponent', () => {
   afterEach(() => TestBed.inject(ToastService).clear());
 
@@ -101,18 +92,12 @@ describe('ChangeGameDialogComponent', () => {
     expect(screen.getByText('Needs at most 1 player; 2 are seated')).toBeTruthy();
   });
 
-  it('saves the chosen game and seat count and closes with the updated room', async () => {
+  it('saves the chosen game (no seat count to pick) and closes with the updated room', async () => {
     const { updateRoom, close } = await setup();
     await userEvent.click(screen.getByRole('radio', { name: /Party/ }));
-    const seats = screen.getByRole('radiogroup', { name: 'Seats' });
-    expect(
-      within(seats)
-        .getAllByRole('radio')
-        .map((r) => r.parentElement!.textContent!.trim()),
-    ).toEqual(['3', '4', '5', '6']);
-    await userEvent.click(within(seats).getByRole('radio', { name: '4' }));
+    expect(screen.queryByRole('radiogroup', { name: 'Seats' })).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(updateRoom).toHaveBeenCalledWith(roomId, { gameId: 'party', maxSeats: 4 });
+    expect(updateRoom).toHaveBeenCalledWith(roomId, { gameId: 'party' });
     expect(close).toHaveBeenCalledWith(expect.objectContaining({ gameId: 'party', maxSeats: 3 }));
   });
 

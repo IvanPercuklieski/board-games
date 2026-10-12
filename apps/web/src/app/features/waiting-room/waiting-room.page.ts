@@ -157,7 +157,7 @@ type Ending = 'leaving' | 'closing';
                 <aside class="side">
                   <bt-card class="panel" role="region" aria-labelledby="bt-game-panel-title">
                     <h2 id="bt-game-panel-title">Game</h2>
-                    <p class="muted">{{ gameName() }} · {{ lobby.maxSeats }} seats</p>
+                    <p class="muted">{{ gameName() }} · up to {{ lobby.maxSeats }} players</p>
                     <div class="row">
                       <button bt-button variant="secondary" (click)="changeGame(lobby)">
                         <bt-icon name="arrows-clockwise" /> Change game
@@ -615,7 +615,6 @@ export class WaitingRoomPage implements OnInit {
     const room = await openChangeGameDialog(this.dialog, {
       roomId: this.roomId(),
       gameId: lobby.gameId,
-      maxSeats: lobby.maxSeats,
       seated: lobby.seats.length,
     });
     if (!room) return;

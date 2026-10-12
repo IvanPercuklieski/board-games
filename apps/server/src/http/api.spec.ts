@@ -65,11 +65,11 @@ async function expectError(res: Response, status: number, code: ApiErrorCode) {
   expect(apiErrorSchema.parse(await res.json())).toEqual({ error: code });
 }
 
-async function createRoom(c: Ctx, token: string, maxSeats = 2) {
+async function createRoom(c: Ctx, token: string) {
   const res = await api(c.url, '/api/rooms', {
     method: 'POST',
     headers: bearer(token),
-    json: { gameId: 'tictactoe', maxSeats },
+    json: { gameId: 'tictactoe' },
   });
   expect(res.status).toBe(201);
   const body = createRoomResponseSchema.parse(await res.json());
@@ -109,7 +109,7 @@ describe('host authentication', () => {
       await api(url, '/api/rooms', {
         method: 'POST',
         headers,
-        json: { gameId: 'tictactoe', maxSeats: 2 },
+        json: { gameId: 'tictactoe' },
       }),
       401,
       'unauthorized',
@@ -124,7 +124,7 @@ describe('host authentication', () => {
       await api(url, '/api/rooms', {
         method: 'POST',
         headers: bearer(token),
-        json: { gameId: 'tictactoe', maxSeats: 2 },
+        json: { gameId: 'tictactoe' },
       }),
       403,
       'forbidden',
@@ -134,9 +134,9 @@ describe('host authentication', () => {
 
 describe('request validation', () => {
   it.each([
-    ['unknown fields', { gameId: 'tictactoe', maxSeats: 2, hostUserId: 'x' }],
-    ['a bad seat count', { gameId: 'tictactoe', maxSeats: 99 }],
-    ['a missing game', { maxSeats: 2 }],
+    ['unknown fields', { gameId: 'tictactoe', hostUserId: 'x' }],
+    ['a seat count (rooms are open up to the game maximum)', { gameId: 'tictactoe', maxSeats: 2 }],
+    ['a missing game', {}],
   ])('rejects bodies with %s', async (_case, json) => {
     const { url, aliceToken } = await setup();
     await expectError(
@@ -174,7 +174,7 @@ describe('request validation', () => {
       await api(url, '/api/rooms', {
         method: 'POST',
         headers: bearer(aliceToken),
-        json: { gameId: 'tictactoe', maxSeats: 2, padding: 'x'.repeat(11_000) },
+        json: { gameId: 'tictactoe', padding: 'x'.repeat(11_000) },
       }),
       413,
       'validation_error',
@@ -357,7 +357,7 @@ describe('rooms flow', () => {
       await api(c.url, '/api/rooms', {
         method: 'POST',
         headers: bearer(c.aliceToken),
-        json: { gameId: 'tictactoe', maxSeats: 2 },
+        json: { gameId: 'tictactoe' },
       }),
       409,
       'limit_reached',
@@ -417,18 +417,15 @@ describe('changing the game (PATCH /api/rooms/:id)', () => {
   const patch = (c: Ctx, roomId: string, headers: Record<string, string>, json: unknown) =>
     api(c.url, `/api/rooms/${roomId}`, { method: 'PATCH', headers, json });
 
-  it('lets the host change game and seat count while waiting, and returns the room', async () => {
+  it('lets the host change the game while waiting, and returns the room', async () => {
     const c = await setup();
     const room = await createRoom(c, c.aliceToken);
-    const res = await patch(c, room.roomId, bearer(c.aliceToken), {
-      gameId: 'tictactoe',
-      maxSeats: 2,
-    });
+    const res = await patch(c, room.roomId, bearer(c.aliceToken), { gameId: 'catan' });
     expect(res.status).toBe(200);
     expect(roomSummarySchema.parse(await res.json())).toMatchObject({
       roomId: room.roomId,
-      gameId: 'tictactoe',
-      maxSeats: 2,
+      gameId: 'catan',
+      maxSeats: 6,
       status: 'waiting',
     });
   });
@@ -436,7 +433,7 @@ describe('changing the game (PATCH /api/rooms/:id)', () => {
   it('is only for the host of the room', async () => {
     const c = await setup();
     const room = await createRoom(c, c.aliceToken);
-    const body = { gameId: 'tictactoe', maxSeats: 2 };
+    const body = { gameId: 'tictactoe' };
     await expectError(await patch(c, room.roomId, {}, body), 401, 'unauthorized');
     const mallory = randomUUID();
     c.repo.addProfile(mallory, 'Mallory');
@@ -447,19 +444,18 @@ describe('changing the game (PATCH /api/rooms/:id)', () => {
     );
   });
 
-  it.each([
-    { gameId: 'tictactoe' },
-    { gameId: 'no-such-game', maxSeats: 2 },
-    { gameId: 'tictactoe', maxSeats: 3 },
-  ])('rejects an invalid change %j', async (body) => {
-    const c = await setup();
-    const room = await createRoom(c, c.aliceToken);
-    await expectError(
-      await patch(c, room.roomId, bearer(c.aliceToken), body),
-      400,
-      'validation_error',
-    );
-  });
+  it.each([{ gameId: 'no-such-game' }, { gameId: 'catan', maxSeats: 6 }, {}])(
+    'rejects an invalid change %j',
+    async (body) => {
+      const c = await setup();
+      const room = await createRoom(c, c.aliceToken);
+      await expectError(
+        await patch(c, room.roomId, bearer(c.aliceToken), body),
+        400,
+        'validation_error',
+      );
+    },
+  );
 
   it('is locked while a game is running', async () => {
     const c = await setup();
@@ -470,7 +466,7 @@ describe('changing the game (PATCH /api/rooms/:id)', () => {
       headers: bearer(c.aliceToken),
     });
     await expectError(
-      await patch(c, room.roomId, bearer(c.aliceToken), { gameId: 'tictactoe', maxSeats: 2 }),
+      await patch(c, room.roomId, bearer(c.aliceToken), { gameId: 'tictactoe' }),
       409,
       'room_locked',
     );
@@ -684,7 +680,7 @@ describe('rate limiting', () => {
       await api(c.url, '/api/rooms', {
         method: 'POST',
         headers: bearer(c.aliceToken),
-        json: { gameId: 'tictactoe', maxSeats: 2 },
+        json: { gameId: 'tictactoe' },
       }),
       429,
       'rate_limited',

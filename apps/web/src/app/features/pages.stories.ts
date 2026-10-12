@@ -202,9 +202,8 @@ export const ChangeGameDialog: StoryObj<ChangeGameDialogComponent> = {
           useValue: {
             roomId: ROOM,
             gameId: 'tictactoe',
-            maxSeats: 2,
             seated: 2,
-            // placeholder games to show the seat picker and a disabled choice
+            // placeholder games to show the player ranges and a disabled choice
             games: [
               sampleGame('tictactoe', 'Tic-tac-toe', 2, 2),
               sampleGame('sample-party', 'Sample party game', 2, 6),

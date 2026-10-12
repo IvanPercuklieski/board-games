@@ -229,7 +229,7 @@ describe('WaitingRoomPage', () => {
     it('shows the current game and opens the change-game dialog', async () => {
       await setup({ initial: bothSeated() });
       const card = await screen.findByRole('region', { name: 'Game' });
-      expect(within(card).getByText('Tic-tac-toe · 2 seats')).toBeTruthy();
+      expect(within(card).getByText('Tic-tac-toe · up to 2 players')).toBeTruthy();
       await userEvent.click(within(card).getByRole('button', { name: /Change game/ }));
       const dialog = await screen.findByRole('dialog', { name: 'Change game' });
       await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));

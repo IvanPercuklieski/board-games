@@ -65,34 +65,25 @@ describe('playerNameSchema', () => {
 });
 
 describe('request schemas', () => {
-  it('parses a create-room request', () => {
-    expect(createRoomRequestSchema.parse({ gameId: 'tictactoe', maxSeats: 2 })).toEqual({
-      gameId: 'tictactoe',
-      maxSeats: 2,
-    });
+  it('parses a create-room request: just the game (seats go up to its maximum)', () => {
+    expect(createRoomRequestSchema.parse({ gameId: 'tictactoe' })).toEqual({ gameId: 'tictactoe' });
   });
 
   it.each([
-    { gameId: 'tictactoe', maxSeats: 0 },
-    { gameId: 'tictactoe', maxSeats: 17 },
-    { gameId: 'tictactoe', maxSeats: 2.5 },
-    { gameId: 'Tic Tac Toe', maxSeats: 2 },
-    { gameId: '', maxSeats: 2 },
-    { maxSeats: 2 },
-    { gameId: 'tictactoe', maxSeats: 2, hostUserId: 'someone-else' },
+    { gameId: 'Tic Tac Toe' },
+    { gameId: '' },
+    {},
+    { gameId: 'tictactoe', maxSeats: 2 }, // the seat count is no longer chosen
+    { gameId: 'tictactoe', hostUserId: 'someone-else' },
   ])('rejects invalid create-room request %j', (body) => {
     expect(createRoomRequestSchema.safeParse(body).success).toBe(false);
   });
 
   it('parses a change-game request with the same rules as creating a room', () => {
-    expect(updateRoomRequestSchema.parse({ gameId: 'tictactoe', maxSeats: 2 })).toEqual({
-      gameId: 'tictactoe',
-      maxSeats: 2,
-    });
-    expect(updateRoomRequestSchema.safeParse({ gameId: 'tictactoe' }).success).toBe(false);
+    expect(updateRoomRequestSchema.parse({ gameId: 'catan' })).toEqual({ gameId: 'catan' });
+    expect(updateRoomRequestSchema.safeParse({}).success).toBe(false);
     expect(
-      updateRoomRequestSchema.safeParse({ gameId: 'tictactoe', maxSeats: 2, status: 'waiting' })
-        .success,
+      updateRoomRequestSchema.safeParse({ gameId: 'tictactoe', status: 'waiting' }).success,
     ).toBe(false);
   });
 

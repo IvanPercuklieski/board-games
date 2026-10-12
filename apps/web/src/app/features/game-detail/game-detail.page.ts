@@ -10,7 +10,6 @@ import { ButtonComponent } from '../../ui/button/button.component';
 import { CardComponent } from '../../ui/card/card.component';
 import { EmptyStateComponent } from '../../ui/empty-state/empty-state.component';
 import { IconComponent } from '../../ui/icon/icon.component';
-import { SegmentedComponent } from '../../ui/segmented/segmented.component';
 import { GameFactsComponent } from '../catalog/game-facts.component';
 
 /** One game: description and the host form (seat count) that creates a room. */
@@ -24,7 +23,6 @@ import { GameFactsComponent } from '../catalog/game-facts.component';
     GameFactsComponent,
     IconComponent,
     RouterLink,
-    SegmentedComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -47,19 +45,7 @@ import { GameFactsComponent } from '../catalog/game-facts.component';
               You take the first seat. Then share the invite link; friends don’t need an account.
             </p>
 
-            @if (seatOptions().length > 1) {
-              <div class="field">
-                <span class="field-label">Seats</span>
-                <bt-segmented
-                  label="Seats"
-                  [options]="seatOptions()"
-                  [value]="seats()"
-                  (valueChange)="chosenSeats.set($event)"
-                />
-              </div>
-            } @else {
-              <p class="fixed-seats"><bt-icon name="users" /> A table for {{ game.minPlayers }}</p>
-            }
+            <p class="fixed-seats"><bt-icon name="users" /> {{ seatsText() }}</p>
 
             @if (limitReached()) {
               <p class="failure" role="alert">
@@ -139,14 +125,6 @@ import { GameFactsComponent } from '../catalog/game-facts.component';
       color: var(--bt-color-text-muted);
       font-size: var(--bt-text-sm);
     }
-    .field {
-      display: grid;
-      gap: var(--bt-space-2);
-    }
-    .field-label {
-      font-size: var(--bt-text-sm);
-      font-weight: 600;
-    }
     .fixed-seats {
       display: inline-flex;
       align-items: center;
@@ -185,28 +163,24 @@ export class GameDetailPage {
   private readonly router = inject(Router);
 
   protected readonly game = computed(() => getCatalogEntry(this.gameId()));
-  protected readonly seatOptions = computed(() => {
+  /** Rooms are open: anyone with the link joins, up to the game's maximum. */
+  protected readonly seatsText = computed(() => {
     const game = this.game();
-    if (!game) return [];
+    if (!game) return '';
     const max = Math.min(game.maxPlayers, LIMITS.maxSeats);
-    return Array.from({ length: max - game.minPlayers + 1 }, (_, i) => {
-      const n = game.minPlayers + i;
-      return { value: n, label: String(n) };
-    });
+    return game.minPlayers === max
+      ? `A table for ${max}`
+      : `Up to ${max} players can join (at least ${game.minPlayers} to start)`;
   });
-
-  protected readonly chosenSeats = signal<number | undefined>(undefined);
-  /** Defaults to the game's minimum until the host picks another number. */
-  protected readonly seats = computed(() => this.chosenSeats() ?? this.game()?.minPlayers);
 
   /** Shown inline (with a link to My rooms) instead of a toast. */
   protected readonly limitReached = signal(false);
   protected readonly maxRooms = LIMITS.maxActiveRoomsPerHost;
 
   protected readonly hostAction = asyncAction(
-    async (gameId: string, maxSeats: number) => {
+    async (gameId: string) => {
       this.limitReached.set(false);
-      const room = await this.api.createRoom({ gameId, maxSeats });
+      const room = await this.api.createRoom({ gameId });
       this.seatStore.saveSeat(room.roomId, room.seat);
       this.seatStore.saveInviteUrl(room.roomId, room.inviteUrl);
       await this.router.navigateByUrl(`/rooms/${room.roomId}`);
@@ -223,7 +197,6 @@ export class GameDetailPage {
 
   protected async host() {
     const game = this.game();
-    const maxSeats = this.seats();
-    if (game && maxSeats !== undefined) await this.hostAction.run(game.id, maxSeats);
+    if (game) await this.hostAction.run(game.id);
   }
 }
